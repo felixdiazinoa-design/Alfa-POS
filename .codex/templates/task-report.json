@@ -1,0 +1,39 @@
+{
+  "schemaVersion": 1,
+  "product": "ALFA-POS",
+  "sourceCommit": "REPLACE_WITH_CANDIDATE_SHA",
+  "scopeHash": "REPLACE_WITH_PLAN_SCOPE_HASH",
+  "developerIds": [
+    "REPLACE_WITH_AUTHOR_AGENT_ID"
+  ],
+  "risk": "HIGH",
+  "extraGates": [],
+  "records": [
+    {
+      "gate": "analysis",
+      "agentId": "REPLACE_WITH_INDEPENDENT_AGENT_ID",
+      "sourceCommit": "REPLACE_WITH_CANDIDATE_SHA",
+      "scopeHash": "REPLACE_WITH_PLAN_SCOPE_HASH",
+      "completedAt": "REPLACE_WITH_REAL_UTC_TIMESTAMP",
+      "result": "BLOCKED",
+      "summary": "Plantilla sin validación; completar todos los registros requeridos con evidencia real.",
+      "evidence": [
+        {
+          "path": "/REPLACE_WITH_REAL_ARCHIVED_EVIDENCE",
+          "sha256": "REPLACE_WITH_ACTUAL_FILE_SHA256"
+        }
+      ]
+    }
+  ],
+  "artifact": {
+    "apk": "EXACT_APPROVED_PATH.apk",
+    "versionName": "REPLACE",
+    "versionCode": 0,
+    "applicationId": "REPLACE_FROM_APK",
+    "buildId": "REPLACE",
+    "sizeBytes": 0,
+    "sourceCommit": "REPLACE",
+    "sha256": "REPLACE",
+    "certificateSha256": "REPLACE"
+  }
+}
