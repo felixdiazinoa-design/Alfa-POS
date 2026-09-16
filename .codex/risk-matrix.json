@@ -1,0 +1,54 @@
+{
+  "product": "ALFA-POS",
+  "rules": [
+    {
+      "name": "sync",
+      "pattern": "(sync|outbox|inbox|erp|heartbeat|terminal|storage|services/db/|recovery)",
+      "risk": "HIGH",
+      "gates": [
+        "sync-validator",
+        "offline-validator",
+        "performance",
+        "integration"
+      ]
+    },
+    {
+      "name": "catalog",
+      "pattern": "(catalog|product|item|pricing|tax|discount|promotion|tariff|cart)",
+      "risk": "HIGH",
+      "gates": [
+        "performance",
+        "integration"
+      ]
+    },
+    {
+      "name": "sale",
+      "pattern": "(payment|transaction|sale|checkout|POSInterface|PaymentModal|recovery)",
+      "risk": "HIGH",
+      "gates": [
+        "offline-validator",
+        "performance",
+        "integration"
+      ]
+    },
+    {
+      "name": "android",
+      "pattern": "(android/|native|capacitor|printer|ticket|release|apk)",
+      "risk": "HIGH",
+      "gates": [
+        "offline-validator",
+        "integration",
+        "security"
+      ]
+    },
+    {
+      "name": "auth",
+      "pattern": "(auth|permission|role|license|tenant|security)",
+      "risk": "HIGH",
+      "gates": [
+        "security",
+        "integration"
+      ]
+    }
+  ]
+}
