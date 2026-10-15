@@ -1214,7 +1214,7 @@ export interface StockTransfer {
   discrepancyReason?: string;
 }
 
-export type PromotionType = 'DISCOUNT' | 'BOGO' | 'HAPPY_HOUR' | 'CONDITIONAL_TARGET' | 'BUNDLE';
+export type PromotionType = 'DISCOUNT' | 'BOGO' | 'SECOND_PAIR' | 'HAPPY_HOUR' | 'CONDITIONAL_TARGET' | 'BUNDLE';
 export type PromotionTargetType = 'ALL' | 'PRODUCT' | 'CATEGORY' | 'GROUP' | 'SEASON';
 export type PromotionBenefitType = 'DISCOUNT_PERCENT' | 'FIXED_PRICE' | 'CASHBACK' | 'POINTS_MULTIPLIER';
 

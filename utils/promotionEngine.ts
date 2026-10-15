@@ -1,4 +1,118 @@
-import { CartItem, BusinessConfig, Promotion, Customer } from '../types';
+import type { CartItem, BusinessConfig, Promotion, Customer } from '../types';
+
+const itemMatchesPromotionTarget = (promo: Promotion, item: CartItem, config: BusinessConfig): boolean => {
+    if (promo.targetType === 'ALL') return true;
+    if (promo.targetType === 'PRODUCT' && promo.targetValue === item.id) return true;
+    if (promo.targetType === 'CATEGORY' && promo.targetValue === item.category) return true;
+
+    if (promo.targetType === 'GROUP') {
+        const group = config.productGroups?.find(g => g.id === promo.targetValue);
+        if (group && group.productIds.includes(item.id)) return true;
+    }
+
+    if (promo.targetType === 'SEASON') {
+        const season = config.seasons?.find(s => s.id === promo.targetValue);
+        if (season && season.productIds.includes(item.id)) return true;
+    }
+
+    return false;
+};
+
+// Tipos que ya otorgan un descuento al artículo: cuentan como "otra promoción" y por
+// lo tanto no participan en la promoción de segundo par (sin acumulación).
+const SECOND_PAIR_EXCLUDING_TYPES = new Set(['DISCOUNT', 'HAPPY_HOUR', 'CONDITIONAL_TARGET', 'BOGO']);
+
+const itemHasExistingDiscount = (item: CartItem): boolean => (
+    typeof item.originalPrice === 'number' && item.price < item.originalPrice
+);
+
+const itemHasAnotherPromotion = (
+    item: CartItem,
+    activePromotions: Promotion[],
+    config: BusinessConfig,
+    currentPromotionId: string,
+): boolean => activePromotions.some(promo => (
+    promo.id !== currentPromotionId
+    && SECOND_PAIR_EXCLUDING_TYPES.has(promo.type)
+    && itemMatchesPromotionTarget(promo, item, config)
+));
+
+/**
+ * Promoción de segundo par (Opción B corregida por el cliente).
+ *
+ * El descuento aplica a la mitad de los pares elegibles de toda la compra, redondeando
+ * hacia abajo, siempre a los de menor precio. No se forman parejas: 2 pares descuentan 1,
+ * 3 descuentan 1, 4 descuentan los 2 más baratos y 5 descuentan los 2 más baratos.
+ *
+ * La mercancía ya rebajada (descuento manual, precio de oferta u otra promoción) no cuenta
+ * para activar la promoción ni recibe el descuento. El descuento se refleja en la línea
+ * afectada, de modo que el ticket muestra en qué par se aplicó.
+ */
+const applySecondPairPromotions = (
+    cart: CartItem[],
+    activePromotions: Promotion[],
+    config: BusinessConfig,
+): CartItem[] => {
+    const secondPairPromotions = activePromotions
+        .filter(promo => promo.type === 'SECOND_PAIR')
+        .sort((a, b) => (b.priority || 1) - (a.priority || 1));
+
+    if (secondPairPromotions.length === 0) return cart;
+
+    let nextCart = cart;
+
+    for (const promo of secondPairPromotions) {
+        const minimumQuantity = promo.trigger?.type === 'ITEM_QTY' && Number(promo.trigger.value) > 0
+            ? Math.max(2, Math.floor(Number(promo.trigger.value)))
+            : 2;
+        const discountRate = Math.max(0, Math.min(100, Number(promo.benefitValue) || 0)) / 100;
+
+        const eligible = nextCart
+            .map((item, index) => ({ item, index }))
+            .filter(({ item }) => (
+                !item.appliedPromotionId
+                && item.quantity > 0
+                && (item.price || 0) > 0
+                && !itemHasExistingDiscount(item)
+                && itemMatchesPromotionTarget(promo, item, config)
+                && !itemHasAnotherPromotion(item, activePromotions, config, promo.id)
+            ));
+
+        const totalUnits = eligible.reduce((sum, { item }) => sum + item.quantity, 0);
+        if (discountRate <= 0 || totalUnits < minimumQuantity) continue;
+
+        let unitsLeft = Math.floor(totalUnits / 2);
+        if (unitsLeft <= 0) continue;
+
+        const cheapestFirst = eligible
+            .slice()
+            .sort((a, b) => (a.item.price - b.item.price) || (a.index - b.index));
+
+        const discountedUnitsByLine = new Map<number, number>();
+        for (const { item, index } of cheapestFirst) {
+            if (unitsLeft <= 0) break;
+            const units = Math.min(unitsLeft, item.quantity);
+            discountedUnitsByLine.set(index, units);
+            unitsLeft -= units;
+        }
+
+        nextCart = nextCart.map((item, index) => {
+            const discountedUnits = discountedUnitsByLine.get(index) || 0;
+            if (discountedUnits <= 0) return item;
+
+            const originalPrice = item.originalPrice ?? item.price;
+            const discountedUnitPrice = originalPrice * (1 - discountRate);
+            const newPrice = (
+                (originalPrice * (item.quantity - discountedUnits))
+                + (discountedUnitPrice * discountedUnits)
+            ) / item.quantity;
+
+            return { ...item, price: newPrice, originalPrice, appliedPromotionId: promo.id };
+        });
+    }
+
+    return nextCart;
+};
 
 export const applyPromotions = (cart: CartItem[], config: BusinessConfig, terminalId: string, customer?: Customer): CartItem[] => {
     const activePromotions = config.promotions?.filter(p => {
@@ -58,31 +172,24 @@ export const applyPromotions = (cart: CartItem[], config: BusinessConfig, termin
     if (activePromotions.length === 0) return cart;
 
     // Clone cart to avoid mutation
-    let processedCart = cart.map(item => ({ ...item, originalPrice: item.originalPrice || item.price }));
+    let processedCart: CartItem[] = cart.map(item => ({ ...item, originalPrice: item.originalPrice || item.price }));
+
+    // Segundo par: es una regla por compra (cruza líneas), así que se resuelve antes del
+    // recorrido por línea. Las líneas que recibe quedan marcadas y no vuelven a descontarse.
+    processedCart = applySecondPairPromotions(processedCart, activePromotions, config);
 
     // Apply Promotions
     // Priority: We apply the first matching promotion for simplicity in this prototype.
     // In a real system, we might want "Best Offer" logic or "Stackable" flags.
 
     processedCart = processedCart.map(item => {
+        // Sin acumulación: la línea ya recibió el descuento del segundo par.
+        if (item.appliedPromotionId) return item;
+
         // Find ALL applicable promotions for this item
         const applicablePromos = activePromotions.filter(p => {
-            if (p.targetType === 'ALL') return true;
-            if (p.targetType === 'PRODUCT' && p.targetValue === item.id) return true;
-            if (p.targetType === 'CATEGORY' && p.targetValue === item.category) return true;
-
-
-            if (p.targetType === 'GROUP') {
-                const group = config.productGroups?.find(g => g.id === p.targetValue);
-                if (group && group.productIds.includes(item.id)) return true;
-            }
-
-            if (p.targetType === 'SEASON') {
-                const season = config.seasons?.find(s => s.id === p.targetValue);
-                if (season && season.productIds.includes(item.id)) return true;
-            }
-
-            return false;
+            if (p.type === 'SECOND_PAIR') return false;
+            return itemMatchesPromotionTarget(p, item, config);
         });
 
         if (applicablePromos.length === 0) return item;
@@ -247,21 +354,5 @@ export const hasProductPromotion = (product: any, config: BusinessConfig, termin
     });
 
     // 2. Check if any active promotion targets this product
-    return activePromotions.some(p => {
-        if (p.targetType === 'ALL') return true;
-        if (p.targetType === 'PRODUCT' && p.targetValue === product.id) return true;
-        if (p.targetType === 'CATEGORY' && p.targetValue === product.category) return true;
-
-        if (p.targetType === 'GROUP') {
-            const group = config.productGroups?.find(g => g.id === p.targetValue);
-            if (group && group.productIds.includes(product.id)) return true;
-        }
-
-        if (p.targetType === 'SEASON') {
-            const season = config.seasons?.find(s => s.id === p.targetValue);
-            if (season && season.productIds.includes(product.id)) return true;
-        }
-
-        return false;
-    });
+    return activePromotions.some(p => itemMatchesPromotionTarget(p, product as CartItem, config));
 };
