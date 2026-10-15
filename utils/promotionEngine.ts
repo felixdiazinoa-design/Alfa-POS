@@ -172,7 +172,7 @@ export const applyPromotions = (cart: CartItem[], config: BusinessConfig, termin
     if (activePromotions.length === 0) return cart;
 
     // Clone cart to avoid mutation
-    let processedCart = cart.map(item => ({ ...item, originalPrice: item.originalPrice || item.price }));
+    let processedCart: CartItem[] = cart.map(item => ({ ...item, originalPrice: item.originalPrice || item.price }));
 
     // Segundo par: es una regla por compra (cruza líneas), así que se resuelve antes del
     // recorrido por línea. Las líneas que recibe quedan marcadas y no vuelven a descontarse.
