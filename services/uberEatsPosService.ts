@@ -1,6 +1,5 @@
 import { BusinessConfig, Transaction } from '../types';
-
-const DEFAULT_ERP_BASE_URL = 'https://clic-erp.clicsuite.com';
+import { DEFAULT_PUBLIC_ERP_BASE_URL as DEFAULT_ERP_BASE_URL } from '../utils/erpBaseUrl';
 
 const normalizeString = (value: unknown): string => {
   if (typeof value !== 'string') return '';
