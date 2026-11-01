@@ -530,7 +530,11 @@ export interface CurrencyAuditLog {
   terminalId?: string;             // Terminal donde se hizo el cambio
 }
 
-export type PaymentMethod = 'CASH' | 'CARD' | 'QR' | 'WALLET' | 'ADVANCE' | 'OTHER' | 'CREDIT';
+/**
+ * `LOYALTY` es el canje de puntos EGO Club: entra como forma de pago no monetaria para
+ * que el cierre de caja cuadre contra el total del ticket.
+ */
+export type PaymentMethod = 'CASH' | 'CARD' | 'QR' | 'WALLET' | 'ADVANCE' | 'OTHER' | 'CREDIT' | 'LOYALTY';
 
 export interface PaymentMethodDefinition {
   id: string;
@@ -661,6 +665,22 @@ export interface LoyaltyConfig {
   expirationMonths: number;
   excludedCategories: string[];
   tiers?: LoyaltyTier[];
+}
+
+/** Canje de puntos aplicado a un ticket. El saldo siempre lo dicta el ERP. */
+export interface LoyaltyRedemption {
+  /** Clave idempotente del canje en el POS. */
+  id: string;
+  customerId: string;
+  points: number;
+  /** Valor monetario cubierto por el canje (points × redeemRate). */
+  value: number;
+  redeemRate: number;
+  reason: string;
+  /** Saldo resultante según el snapshot devuelto por el ERP. */
+  balanceAfter?: number;
+  redeemedAt: string;
+  terminalId?: string;
 }
 
 
@@ -1101,6 +1121,12 @@ export interface Transaction {
   reservationCode?: string;
   priorAdvancePaid?: number;
   balanceDueAtSale?: number;
+
+  /**
+   * Canje de puntos EGO Club aplicado al ticket.
+   * El saldo es el que devolvió el ERP; el POS no lo calcula ni lo descuenta por su cuenta.
+   */
+  loyaltyRedemption?: LoyaltyRedemption;
 
   // Accounts Receivable (CxC)
   dueDate?: string;         // ISO Date

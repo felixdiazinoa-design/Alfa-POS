@@ -122,3 +122,86 @@ export const pointsToCurrency = (points: number | undefined, config: BusinessCon
     if (!Number.isFinite(redeemRate) || redeemRate <= 0) return 0;
     return (Number(points) || 0) * redeemRate;
 };
+
+/** Tasa de canje del ERP (1 punto = RD$X). 0 si el programa está apagado o mal configurado. */
+export const getRedeemRate = (config: BusinessConfig | null | undefined): number => {
+    const rate = Number(config?.loyalty?.redeemRate);
+    return Number.isFinite(rate) && rate > 0 ? rate : 0;
+};
+
+/**
+ * Mínimo de canje del nivel del cliente.
+ *
+ * Es un **umbral para poder canjear**, no un saldo que deba permanecer en la cuenta: con
+ * 1.250 puntos exactos el socio puede canjear los 1.250. Se toma del nivel y, si el nivel
+ * no lo declara, del mínimo global del programa.
+ */
+export const getMinRedemptionUnits = (config: BusinessConfig | null | undefined, tier: unknown): number => {
+    const fromTier = Number(getTierDefinition(config, tier)?.minRedemptionUnits);
+    if (Number.isFinite(fromTier) && fromTier > 0) return fromTier;
+
+    const global = Number(config?.loyalty?.minRedemptionPoints);
+    return Number.isFinite(global) && global > 0 ? global : 0;
+};
+
+export interface RedemptionBounds {
+    /** Puntos disponibles según el ERP. */
+    available: number;
+    /** Umbral de canje del nivel: el socio debe tener al menos estos puntos. */
+    minUnits: number;
+    /** Mínimo canjeable en esta operación (siempre 1 punto: el umbral es de elegibilidad). */
+    minAmount: number;
+    /** Tope de canje: min(disponibles, ticketTotal / redeemRate). */
+    max: number;
+    redeemRate: number;
+    /** ¿El cliente puede canjear hoy (alcanza el umbral y el ticket lo admite)? */
+    canRedeem: boolean;
+    /** Motivo por el que no se puede canjear, para mostrar en caja. */
+    blockedReason?: string;
+}
+
+/**
+ * Calcula los límites del canje para un ticket.
+ *
+ * `ticketTotal` es el total que el cliente paga (con impuestos): el canje puede cubrir
+ * hasta el 100 % del ticket, nunca más.
+ *
+ * Decisión sobre el mínimo de canje: `minRedemptionUnits` (1.250) se evalúa como
+ * **umbral de elegibilidad sobre el saldo disponible**, no como monto mínimo de la
+ * operación. Es la única lectura compatible con el caso de aceptación del brief (cliente
+ * con 2.000 puntos y ticket de RD$500 → puede canjear hasta 500 puntos): si el mínimo
+ * fuera el monto, ese ticket no podría canjear nada. Ver nota en el PR de T5.
+ */
+export const calculateRedemptionBounds = (params: {
+    availablePoints: number | undefined;
+    ticketTotal: number;
+    config: BusinessConfig | null | undefined;
+    tier: unknown;
+}): RedemptionBounds => {
+    const redeemRate = getRedeemRate(params.config);
+    const minUnits = getMinRedemptionUnits(params.config, params.tier);
+    const available = Math.max(0, Math.floor(Number(params.availablePoints) || 0));
+    const empty = { available, minUnits, minAmount: 1, redeemRate, max: 0 };
+
+    if (redeemRate <= 0) {
+        return { ...empty, canRedeem: false, blockedReason: 'El programa no tiene tasa de canje configurada' };
+    }
+
+    const ticketTotal = Math.max(0, Number(params.ticketTotal) || 0);
+    const max = Math.max(0, Math.min(available, Math.floor(ticketTotal / redeemRate)));
+
+    if (minUnits > 0 && available < minUnits) {
+        return {
+            ...empty,
+            max,
+            canRedeem: false,
+            blockedReason: `El mínimo para canjear de este nivel es de ${minUnits.toLocaleString('es-DO')} puntos`,
+        };
+    }
+
+    if (max <= 0) {
+        return { ...empty, canRedeem: false, blockedReason: 'El ticket no tiene monto canjeable' };
+    }
+
+    return { ...empty, max, canRedeem: true };
+};

@@ -238,3 +238,85 @@ export const sendEnrollmentNow = async (item: LoyaltyOutboxItem): Promise<{ ok: 
     }
     return outcome;
 };
+
+/**
+ * Clave idempotente del canje.
+ *
+ * Se deriva de cliente + puntos + minuto, de modo que un doble clic del cajero sobre el
+ * mismo canje reutiliza la clave en lugar de enviar dos redenciones distintas.
+ */
+export const buildRedemptionId = (params: { customerId: string; points: number; at?: Date }): string => {
+    const at = params.at || new Date();
+    const minute = at.toISOString().slice(0, 16);
+    return uuidv5(`ego-club:redeem:${params.customerId}:${params.points}:${minute}`, EGO_CLUB_NAMESPACE);
+};
+
+/** Extrae el saldo devuelto por el ERP sin asumir una única forma de snapshot. */
+export const extractPointsBalance = (snapshot: any): number | undefined => {
+    if (!snapshot || typeof snapshot !== 'object') return undefined;
+    const candidates = [
+        snapshot.loyalty_points,
+        snapshot.loyaltyPoints,
+        snapshot.points,
+        snapshot.points_balance,
+        snapshot.balance,
+        snapshot.loyalty?.points,
+        snapshot.wallet?.points,
+    ];
+    for (const candidate of candidates) {
+        const value = Number(candidate);
+        if (Number.isFinite(value)) return value;
+    }
+    return undefined;
+};
+
+export interface RedeemResult {
+    ok: boolean;
+    points?: number;
+    /** Saldo autoritativo devuelto por el ERP. */
+    balance?: number;
+    error?: string;
+}
+
+/**
+ * Canje de puntos en línea.
+ *
+ * No se encola a propósito: descontar dinero contra un saldo sin verificar no es
+ * aceptable. Si el ERP falla o no responde, el POS **no** aplica el descuento y avisa al
+ * cajero. El saldo que se muestra después es el del snapshot del ERP, nunca uno calculado
+ * localmente.
+ */
+export const redeemPoints = async (params: {
+    customerId: string;
+    points: number;
+    reason: string;
+}): Promise<RedeemResult> => {
+    const points = Math.floor(Number(params.points));
+    if (!params.customerId) return { ok: false, error: 'Falta el cliente para canjear' };
+    if (!Number.isFinite(points) || points <= 0) return { ok: false, error: 'Cantidad de puntos inválida' };
+
+    try {
+        const response = await postErpSyncJson<Record<string, any>>('/loyalty/redeem', {
+            customer_id: params.customerId,
+            points,
+            reason: params.reason,
+        });
+
+        if (response === null) {
+            return { ok: false, error: 'Canal de sincronización del ERP no configurado' };
+        }
+
+        const status = String(response.status || '').toLowerCase();
+        if (status && status !== 'success') {
+            return { ok: false, error: String(response.message || response.error || 'El ERP rechazó el canje') };
+        }
+
+        return {
+            ok: true,
+            points,
+            balance: extractPointsBalance(response.snapshot),
+        };
+    } catch (error: any) {
+        return { ok: false, error: error?.message || 'Error de red al canjear' };
+    }
+};
