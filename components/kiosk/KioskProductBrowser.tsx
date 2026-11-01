@@ -330,7 +330,7 @@ const KioskProductBrowser: React.FC<KioskProductBrowserProps> = ({
                       onError={(e) => {
                         e.currentTarget.style.display = 'none';
                         if (e.currentTarget.parentElement) {
-                          e.currentTarget.parentElement.innerHTML += `<span class=\"text-7xl\">${product.category === 'Bebidas' ? '🥤' : '📦'}</span>`;
+                          e.currentTarget.parentElement.innerHTML += `<span class="text-7xl">${product.category === 'Bebidas' ? '🥤' : '📦'}</span>`;
                         }
                       }}
                     />

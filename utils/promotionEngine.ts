@@ -260,7 +260,7 @@ export const applyPromotions = (cart: CartItem[], config: BusinessConfig, termin
                 }
                 break;
 
-            case 'CONDITIONAL_TARGET':
+            case 'CONDITIONAL_TARGET': {
                 // 1. Calculate Total Spend (based on original prices)
                 const totalSpend = processedCart.reduce((sum, i) => sum + (i.originalPrice! * i.quantity), 0);
 
@@ -293,6 +293,7 @@ export const applyPromotions = (cart: CartItem[], config: BusinessConfig, termin
                     }
                 }
                 break;
+            }
         }
 
         // Ensure we don't increase price (unless it's a weird happy hour)

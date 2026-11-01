@@ -62,7 +62,7 @@ const SourcingIntelligence: React.FC<SourcingIntelligenceProps> = ({
     const handleExport = () => {
         let headers = [];
         let rows = [];
-        let filename = `analitica_proveedores_${activeTab.toLowerCase()}`;
+        const filename = `analitica_proveedores_${activeTab.toLowerCase()}`;
 
         if (activeTab === 'SUMMARY') {
             headers = ['Proveedor', 'RNC', 'Cant. Órdenes', 'Total Comprado', 'Lead Time Prom'];

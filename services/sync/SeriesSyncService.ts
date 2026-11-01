@@ -72,7 +72,7 @@ class SeriesSyncService {
 
             switch (action) {
                 case 'CREATE':
-                case 'UPDATE':
+                case 'UPDATE': {
                     const existingIndex = sequences.findIndex(s => s.id === series.id);
                     if (existingIndex >= 0) {
                         sequences[existingIndex] = series;
@@ -82,14 +82,16 @@ class SeriesSyncService {
                         console.log(`➕ Added series: ${series.id}`);
                     }
                     break;
+                }
 
-                case 'DELETE':
+                case 'DELETE': {
                     const deleteIndex = sequences.findIndex(s => s.id === series);
                     if (deleteIndex >= 0) {
                         sequences.splice(deleteIndex, 1);
                         console.log(`🗑️ Deleted series: ${series}`);
                     }
                     break;
+                }
             }
 
             await db.save('internalSequences', sequences);

@@ -1,5 +1,5 @@
 import { DatabaseAdapter } from '../DatabaseAdapter';
-// @ts-ignore
+// sql.js se resuelve vía allowJs del tsconfig; no necesita supresión de tipos.
 import initSqlJs from 'sql.js';
 
 const DB_NAME = 'clic_pos_sqlite.db';
@@ -166,7 +166,7 @@ export class SQLiteWASMAdapter implements DatabaseAdapter {
     }
 
     async deleteDocument(collectionName: string, id: string): Promise<void> {
-        let collection = await this.getCollection<any[]>(collectionName);
+        const collection = await this.getCollection<any[]>(collectionName);
         if (collection && Array.isArray(collection)) {
             const filtered = collection.filter(doc => doc.id !== id);
             if (filtered.length !== collection.length) {

@@ -56,10 +56,11 @@ const TeamTimelineView: React.FC<TeamTimelineViewProps> = ({
             case 'COMPLETED': return { className: 'bg-blue-500 text-white', style: {} };
             case 'CANCELLED': return { className: 'bg-red-100 text-red-500', style: {} };
             case 'PLANNED':
-            default:
+            default: {
                 const typeDef = serviceTypes.find(t => t.name === activity.type && t.nature === activity.nature);
                 const color = typeDef?.color || (activity.nature === 'BOOKING' ? '#9333ea' : '#4f46e5');
                 return { className: 'text-white', style: { backgroundColor: color } };
+            }
         }
     };
 

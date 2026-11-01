@@ -370,7 +370,7 @@ class NetworkSyncService {
                 // that haven't been pushed yet. Instead, we merge (Upsert).
 
                 // OPTIMIZATION: For productStocks, we MUST ensure uniqueness by productId + warehouseId
-                let existingStocksMap = new Map<string, string>(); // Key -> ID
+                const existingStocksMap = new Map<string, string>(); // Key -> ID
                 if (collection === 'productStocks') {
                     const existing = await dbAdapter.getCollection('productStocks') as any[] || [];
                     existing.forEach(s => {

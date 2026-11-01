@@ -34,7 +34,7 @@ const ModernActionFooter: React.FC<ModernActionFooterProps> = ({
         let accentColor = "";
         let hoverColor = "";
         let iconColor = "";
-        let textColor = "text-slate-600";
+        const textColor = "text-slate-600";
 
         switch (group) {
             case 'sales':

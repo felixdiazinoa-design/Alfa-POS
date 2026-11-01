@@ -543,11 +543,12 @@ const readRuntimeDeviceInfo = async (): Promise<RuntimeDeviceInfo | null> => {
 
 const resolveRuntimeTelemetry = async () => {
     const deviceInfo = await readRuntimeDeviceInfo();
+    const deviceLocalIps = deviceInfo && Array.isArray(deviceInfo.localIps) ? deviceInfo.localIps : [];
     const localIps = Array.from(
         new Set(
             [
                 normalizeOptional(deviceInfo?.localIp || null),
-                ...((Array.isArray(deviceInfo?.localIps) ? deviceInfo?.localIps : []).map((value) => normalizeOptional(value || null))),
+                ...(deviceLocalIps.map((value) => normalizeOptional(value || null))),
             ].filter(Boolean)
         )
     );

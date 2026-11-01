@@ -160,7 +160,7 @@ class TransactionService {
         const globalSequence = await db.getNextGlobalSequence();
 
         // Get and increment the series nextNumber
-        let seriesNumber = seriesConfig.nextNumber || 1;
+        const seriesNumber = seriesConfig.nextNumber || 1;
 
         // Format display ID using series prefix and padding
         const padding = seriesConfig.padding || 6;

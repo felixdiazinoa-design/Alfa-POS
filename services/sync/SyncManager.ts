@@ -982,7 +982,7 @@ class SyncManager {
                         await db.deleteDocument(collection, item.id);
                     } else {
                         // Add repair logic for internalSequences
-                        let finalItem = collection === 'internalSequences' ? this.repairSequenceData(cleanItem) : cleanItem;
+                        const finalItem = collection === 'internalSequences' ? this.repairSequenceData(cleanItem) : cleanItem;
 
                         // Master as Proxy logic: Default cloudSyncStatus to PENDING for audited documents if missing
                         if (['transactions', 'reservations', 'inventoryLedger', 'zReports'].includes(collection)) {

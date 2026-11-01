@@ -51,7 +51,7 @@ const TerminalBindingScreen: React.FC<TerminalBindingScreenProps> = ({ config, d
       console.log(`Connecting to Master at ${masterIp}...`);
 
       // Sanitize input: Remove protocol if entered, and check for existing port
-      let host = masterIp.trim().replace(/^https?:\/\//, '');
+      const host = masterIp.trim().replace(/^https?:\/\//, '');
 
       const port = window.location.port;
       const finalHost = host.includes(':') ? host : (port ? `${host}:${port}` : host);

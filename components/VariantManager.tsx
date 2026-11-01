@@ -107,7 +107,7 @@ const VariantManager: React.FC<VariantManagerProps> = ({ onClose }) => {
     };
 
     const existingIndex = selectedAttribute.values.findIndex(v => v.id === newValue.id);
-    let newValues = [...selectedAttribute.values];
+    const newValues = [...selectedAttribute.values];
     
     if (existingIndex >= 0) {
       newValues[existingIndex] = newValue;

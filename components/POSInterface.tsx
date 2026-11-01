@@ -1444,7 +1444,7 @@ const POSInterface: React.FC<POSInterfaceProps> = ({
          const hasSales = processedCart.some(i => i.quantity > 0);
          const isRefundOnly = hasReturns && !hasSales;
          const refundSeriesId = activeTerminalConfig?.documentAssignments?.['REFUND'] || 'REFUND';
-         const assignedSequenceId = activeTerminalConfig?.documentAssignments?.['TICKET']!;
+         const assignedSequenceId = activeTerminalConfig?.documentAssignments?.['TICKET'];
          const normalizedRefundItems = processedCart
             .filter(i => i.quantity < 0)
             .map(item => ({ ...item, quantity: Math.abs(item.quantity) }));
