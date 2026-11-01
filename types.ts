@@ -2108,8 +2108,19 @@ export type PromotionType =
   | 'PAYMENT_METHOD_DISCOUNT'
   | 'PREPAID_PACKAGE'
   | 'NEXT_PURCHASE_COUPON';
-export type PromotionTargetType = 'ALL' | 'PRODUCT' | 'VARIANT' | 'CATEGORY' | 'GROUP' | 'SEASON';
+export type PromotionTargetType = 'ALL' | 'PRODUCT' | 'VARIANT' | 'BRAND' | 'CATEGORY' | 'GROUP' | 'SEASON';
 export type PromotionBenefitType = 'DISCOUNT_PERCENT' | 'FIXED_PRICE' | 'CASHBACK' | 'POINTS_MULTIPLIER';
+
+/** Niveles del programa EGO Club, resueltos por el ERP a partir del gasto anual. */
+export type LoyaltyTierId = 'STANDARD' | 'GOLD' | 'BLACK';
+
+/**
+ * Audiencia de una promoción por nivel EGO Club.
+ * Sin `tiers` (o con la lista vacía) la promoción aplica a todos, como antes.
+ */
+export interface PromotionAudience {
+  tiers?: LoyaltyTierId[];
+}
 
 export interface PromotionApplicationTrace {
   promotionId: string;
@@ -2147,7 +2158,7 @@ export interface Promotion {
 
   // Target
   targetType: PromotionTargetType;
-  targetValue?: string; // ID of Product (parent for VARIANT), Category, Group, Season
+  targetValue?: string; // ID of Product (parent for VARIANT), Category, Group, Season, Brand
   targetLabel?: string;
   targetRefs?: string[];
   targetStrategy?: {
@@ -2156,6 +2167,9 @@ export interface Promotion {
     tieBreaker?: 'FIRST_ADDED' | 'LAST_ADDED';
     allowSelfTrigger?: boolean;
   };
+
+  // Audiencia (EGO Club). Vacío o ausente = aplica a todos.
+  audience?: PromotionAudience;
 
   // Benefit
   benefitType?: PromotionBenefitType; // Optional for backward compatibility, defaults to DISCOUNT implied by type

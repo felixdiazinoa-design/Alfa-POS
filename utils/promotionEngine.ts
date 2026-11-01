@@ -375,6 +375,18 @@ const promotionMatchesCategoryTarget = (promotion: Promotion, product: any): boo
     || (Array.isArray(promotion.targetRefs) && promotion.targetRefs.some((ref) => productMatchesCategory(product, ref)))
 );
 
+/**
+ * Objetivo BRAND (EGO Club T1): el ERP hidrata `targetRefs` con los ids/SKUs/códigos
+ * de todos los ítems de la marca; como respaldo se compara `brandId`/`brand_id`.
+ */
+const promotionMatchesBrandTarget = (promotion: Promotion, product: any): boolean => {
+    if (promotionMatchesResolvedRefs(promotion, product)) return true;
+    const brand = normalizeMatchToken(product?.brandId ?? product?.brand_id);
+    if (!brand) return false;
+    return brand === normalizeMatchToken(promotion.targetValue)
+        || brand === normalizeMatchToken(promotion.targetLabel);
+};
+
 const productBelongsToReferenceGroup = (product: any, productIds?: unknown[]): boolean => (
     productMatchesReferenceList(product, Array.isArray(productIds) ? productIds : [])
 );
@@ -537,6 +549,7 @@ const promotionTargetsProduct = (promotion: Promotion, product: any, config: Bus
     if (promotion.targetType === 'ALL') return true;
     if (promotion.targetType === 'PRODUCT') return promotionMatchesTargetReference(promotion, product);
     if (promotion.targetType === 'VARIANT') return Boolean(resolveVariantPromotionMatch(promotion, product));
+    if (promotion.targetType === 'BRAND') return promotionMatchesBrandTarget(promotion, product);
     if (promotion.targetType === 'CATEGORY') return promotionMatchesCategoryTarget(promotion, product);
 
     if (promotion.targetType === 'GROUP') {
@@ -553,6 +566,11 @@ const promotionTargetsProduct = (promotion: Promotion, product: any, config: Bus
 
     return false;
 };
+
+/** Compatibilidad con el contrato de EGO Club (T1): una línea participa del objetivo. */
+export const itemMatchesPromotionTarget = (promo: Promotion, item: CartItem, config: BusinessConfig): boolean => (
+    promotionTargetsProduct(promo, item, config)
+);
 
 const isPromotionActive = (promotion: Promotion): boolean => promotion.schedule?.isActive !== false;
 
