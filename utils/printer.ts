@@ -334,7 +334,7 @@ export const printTicket = async (transaction: Transaction, config: BusinessConf
                     <div style="font-weight: bold; margin-bottom: 4px; font-size: 10px;">FORMAS DE PAGO</div>
                     ${payments.map((p: any) => `
                     <div class="total-row">
-                        <span>${p.method === 'CASH' ? 'EFECTIVO' : p.method === 'CARD' ? 'TARJETA' : p.method === 'STORE_CREDIT' ? 'NOTA DE CRÉDITO' : p.method}</span>
+                        <span>${p.methodLabel || (p.method === 'CASH' ? 'EFECTIVO' : p.method === 'CARD' ? 'TARJETA' : p.method === 'STORE_CREDIT' ? 'NOTA DE CRÉDITO' : p.method === 'LOYALTY' ? 'CANJE EGO CLUB' : p.method)}</span>
                         <span>${currencySymbol}${(p.amount || 0).toFixed(2)}</span>
                     </div>
                     `).join('')}

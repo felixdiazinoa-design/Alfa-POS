@@ -11,7 +11,7 @@ import {
    ShoppingBag, ScanBarcode, ArrowRight, Clock, Camera, AlertTriangle,
    MessageSquare, PlayCircle, Download, Lock, ArrowUpRight, Landmark,
    UserCheck, StickyNote, Inbox, Printer, QrCode, Box, Package,
-   Cloud, RefreshCw, CloudOff, Layout, ChefHat, Building2, ClipboardCheck
+   Cloud, RefreshCw, CloudOff, Layout, ChefHat, Building2, ClipboardCheck, Coins
 
 
 } from 'lucide-react';
@@ -19,7 +19,7 @@ import { Html5Qrcode } from "html5-qrcode";
 import {
    BusinessConfig, User as UserType, RoleDefinition,
    Customer, Product, CartItem, Transaction, ParkedTicket, Warehouse, NCFType,
-   PaymentEntry, Table, Reservation, ZReport, Room
+   PaymentEntry, Table, Reservation, ZReport, Room, LoyaltyRedemption
 } from '../types';
 import { hasProductPromotion } from '../utils/promotionEngine';
 import { getTierBadgeClass, getTierLabel, isEgoClubEnabled } from '../utils/egoClub';
@@ -30,6 +30,8 @@ import ProductVariantSelector from './ProductVariantSelector';
 import ScaleModal from './ScaleModal';
 import GlobalDiscountModal from './GlobalDiscountModal';
 import LoyaltyScanModal from './LoyaltyScanModal';
+import LoyaltyRedeemModal from './LoyaltyRedeemModal';
+import { buildRedemptionId } from '../services/loyalty/LoyaltyService';
 import TrackingSelectionModal from './TrackingSelectionModal';
 import { db } from '../utils/db';
 import { validateTerminalDocument, validateWarehouseAccess } from '../utils/validation';
@@ -403,6 +405,10 @@ const POSInterface: React.FC<POSInterfaceProps> = ({
    const [mobileView, setMobileView] = useState<'PRODUCTS' | 'TICKET'>('PRODUCTS');
 
    const [showPaymentModal, setShowPaymentModal] = useState(false);
+
+   // Canje EGO Club del ticket actual (ya autorizado por el ERP).
+   const [loyaltyRedemption, setLoyaltyRedemption] = useState<LoyaltyRedemption | null>(null);
+   const [showLoyaltyRedeemModal, setShowLoyaltyRedeemModal] = useState(false);
    const [showTicketOptions, setShowTicketOptions] = useState(false);
    const [showParkedList, setShowParkedList] = useState(false);
    const [showParkAliasModal, setShowParkAliasModal] = useState(false);
@@ -1190,7 +1196,17 @@ const POSInterface: React.FC<POSInterfaceProps> = ({
    const baseCurrency = (config.currencies || []).find(c => c.isBase) || (config.currencies || [])[0];
    const reservationAdvanceApplied = activeRecoveredReservation ? Math.min(activeRecoveredReservation.balancePaid || 0, cartTotal) : 0;
    const reservationBalanceDue = Math.max(0, cartTotal - reservationAdvanceApplied);
-   const amountDueNow = activeRecoveredReservation ? reservationBalanceDue : cartTotal;
+
+   // Canje EGO Club: cubre parte del ticket y se registra como forma de pago propia.
+   // Sólo aplica si el cliente del canje sigue siendo el cliente del ticket.
+   const loyaltyRedemptionApplied = loyaltyRedemption
+      && selectedCustomer
+      && loyaltyRedemption.customerId === selectedCustomer.id
+      ? Math.min(loyaltyRedemption.value, cartTotal)
+      : 0;
+
+   const amountBeforeRedemption = activeRecoveredReservation ? reservationBalanceDue : cartTotal;
+   const amountDueNow = Math.max(0, amountBeforeRedemption - loyaltyRedemptionApplied);
    const isEditingRecoveredReservation = !!activeRecoveredReservation;
 
    useEffect(() => {
@@ -1346,6 +1362,17 @@ const POSInterface: React.FC<POSInterfaceProps> = ({
    const egoClubTierLabel = selectedCustomer && isEgoClubEnabled(config)
       ? getTierLabel(config, selectedCustomer.tier)
       : '';
+
+   // El canje pertenece al cliente y al ticket: si cambia el cliente o se vacía el
+   // ticket, se descarta para no arrastrar un descuento de otra venta.
+   useEffect(() => {
+      setLoyaltyRedemption(current => {
+         if (!current) return current;
+         if (!selectedCustomer || current.customerId !== selectedCustomer.id) return null;
+         if (cart.length === 0) return null;
+         return current;
+      });
+   }, [selectedCustomer, cart.length]);
 
    // --- VISOR SYNC ---
    useEffect(() => {
@@ -1514,9 +1541,24 @@ const POSInterface: React.FC<POSInterfaceProps> = ({
          }
 
          const reservationAdvance = activeRecoveredReservation ? Math.min(activeRecoveredReservation.balancePaid || 0, cartTotal) : 0;
-         const paymentsForTransaction = reservationAdvance > 0
-            ? [...payments, { id: `ADV-${Date.now()}`, method: 'ADVANCE', amount: reservationAdvance, timestamp: new Date() }]
-            : payments;
+         const advancePayment: PaymentEntry[] = reservationAdvance > 0
+            ? [{ id: `ADV-${Date.now()}`, method: 'ADVANCE', amount: reservationAdvance, timestamp: new Date() }]
+            : [];
+
+         // Canje EGO Club como forma de pago no monetaria, con su propia línea y motivo,
+         // para que el cierre de caja cuadre contra el total del ticket.
+         const redemptionPayment: PaymentEntry[] = loyaltyRedemptionApplied > 0 && loyaltyRedemption
+            ? [{
+               id: `LOY-${loyaltyRedemption.id.slice(0, 8)}`,
+               method: 'LOYALTY',
+               methodId: 'LOYALTY',
+               methodLabel: `CANJE EGO CLUB (${loyaltyRedemption.points.toLocaleString('es-DO')} pts)`,
+               amount: loyaltyRedemptionApplied,
+               timestamp: new Date(),
+            }]
+            : [];
+
+         const paymentsForTransaction = [...payments, ...advancePayment, ...redemptionPayment];
 
          if (activeRecoveredReservation && hasReturns) {
             alert('La recuperación de reserva no admite líneas de devolución. Finalice la reserva y procese devoluciones por separado.');
@@ -1705,7 +1747,10 @@ const POSInterface: React.FC<POSInterfaceProps> = ({
                   priorAdvancePaid: reservationAdvance > 0 ? reservationAdvance : undefined,
                   balanceDueAtSale: activeRecoveredReservation ? reservationBalanceDue : undefined,
                   walletDepositAmount: walletDepositAmount > 0 ? walletDepositAmount : undefined,
-                  walletPaymentAmount: walletPaymentAmount > 0 ? walletPaymentAmount : undefined
+                  walletPaymentAmount: walletPaymentAmount > 0 ? walletPaymentAmount : undefined,
+                  loyaltyRedemption: loyaltyRedemptionApplied > 0 && loyaltyRedemption
+                     ? { ...loyaltyRedemption, value: loyaltyRedemptionApplied }
+                     : undefined
                }), 25000, 'TIMEOUT_CREATE_TRANSACTION');
 
                // Ensure seriesId is preserved (Backend might not return it in the root object)
@@ -1737,6 +1782,9 @@ const POSInterface: React.FC<POSInterfaceProps> = ({
                } else {
                   onTransactionComplete(finalTxn);
                }
+
+               // El canje ya se consumió en el ERP: se limpia para el siguiente ticket.
+               setLoyaltyRedemption(null);
 
                if (activeRecoveredReservation) {
                   const warehouseId = activeRecoveredReservation.warehouseId || defaultSalesWarehouseId || 'wh_central';
@@ -2725,6 +2773,18 @@ const POSInterface: React.FC<POSInterfaceProps> = ({
                            </div>
                         </div>
                         <div className="flex items-center gap-2">
+                           {isEgoClubEnabled(config) && (selectedCustomer.loyaltyPoints || 0) > 0 && (
+                              <button
+                                 onClick={() => setShowLoyaltyRedeemModal(true)}
+                                 title="Canjear puntos EGO Club"
+                                 className="px-2.5 py-1.5 rounded-lg border border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100 transition-all flex items-center gap-1"
+                              >
+                                 <Coins size={14} />
+                                 <span className="text-[10px] font-black uppercase">
+                                    {(selectedCustomer.loyaltyPoints || 0).toLocaleString('es-DO')} pts
+                                 </span>
+                              </button>
+                           )}
                            <button
                               onClick={openRecoverReservationForSelectedCustomer}
                               title="Ver reservas activas del cliente"
@@ -3042,6 +3102,12 @@ const POSInterface: React.FC<POSInterfaceProps> = ({
                                        <span>-{baseCurrency.symbol}{discountAmount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                                     </div>
                                  )}
+                                 {loyaltyRedemptionApplied > 0 && (
+                                    <div className="flex justify-between items-center text-xs font-black text-emerald-600">
+                                       <span>CANJE EGO CLUB ({(loyaltyRedemption?.points || 0).toLocaleString('es-DO')} PTS)</span>
+                                       <span>-{baseCurrency.symbol}{loyaltyRedemptionApplied.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                                    </div>
+                                 )}
                                  <div className="flex justify-between items-center text-xs font-bold text-gray-500">
                                     <span>IMPUESTOS</span>
                                     <span>{baseCurrency.symbol}{cartTax.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
@@ -3174,6 +3240,32 @@ const POSInterface: React.FC<POSInterfaceProps> = ({
          }
          {showPaymentModal && <UnifiedPaymentModal total={amountDueNow} items={cart} currencySymbol={baseCurrency.symbol} config={config} onClose={() => setShowPaymentModal(false)} onConfirm={handlePaymentConfirm} themeColor={config.themeColor} customer={selectedCustomer} isDelinquent={isDelinquent} users={users} roles={roles} isMaster={isMaster} currentUser={currentUser} />}
          {showLoyaltyModal && <LoyaltyScanModal onClose={() => setShowLoyaltyModal(false)} onScan={handleLoyaltyScan} />}
+         {showLoyaltyRedeemModal && selectedCustomer && (
+            <LoyaltyRedeemModal
+               config={config}
+               customer={selectedCustomer}
+               ticketTotal={cartTotal}
+               currencySymbol={baseCurrency.symbol}
+               availablePoints={selectedCustomer.loyaltyPoints ?? currentPoints}
+               onClose={() => setShowLoyaltyRedeemModal(false)}
+               onRedeemed={(result) => {
+                  // El saldo mostrado pasa a ser el que devolvió el ERP: no se descuenta
+                  // localmente por nuestra cuenta.
+                  setLoyaltyRedemption({
+                     id: buildRedemptionId({ customerId: selectedCustomer.id, points: result.points }),
+                     customerId: selectedCustomer.id,
+                     points: result.points,
+                     value: result.value,
+                     redeemRate: config.loyalty?.redeemRate || 0,
+                     reason: result.reason,
+                     balanceAfter: result.balanceAfter,
+                     redeemedAt: new Date().toISOString(),
+                     terminalId: activeTerminalId,
+                  });
+                  setSuccessToast(`Canje EGO Club: ${result.points.toLocaleString('es-DO')} pts`);
+               }}
+            />
+         )}
          {editingItem && <CartItemOptionsModal item={editingItem} config={config} users={users} roles={roles} onClose={() => setEditingItem(null)} onUpdate={updateCartItem} canApplyDiscount={true} canVoidItem={true} />}
          {selectedProductForVariants && <ProductVariantSelector product={selectedProductForVariants} currencySymbol={baseCurrency.symbol} onClose={() => setSelectedProductForVariants(null)} onConfirm={(p, m, pr) => { addToCart(p, 1, pr, m); setSelectedProductForVariants(null); }} />}
          {productForScale && <ScaleModal product={productForScale} currencySymbol={baseCurrency.symbol} onClose={() => setProductForScale(null)} onConfirm={(w) => { addToCart(productForScale, w); setProductForScale(null); }} />}
