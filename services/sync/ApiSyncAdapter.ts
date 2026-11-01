@@ -41,6 +41,8 @@ import {
 } from './TerminalCredentialStore';
 import { extractErpRegisterAuth } from './erpRegisterResponse';
 import { isLoopbackHost, isNativeAndroidRuntime } from '../../utils/erpBaseUrl';
+import { getSupportsBatchInbox, logErpIdentity, markBatchInboxUnavailable } from '../../utils/erpCapabilities';
+import { toErpInboxEvent } from '../../utils/erpSyncContract';
 import {
     clearErpIncrementalSyncState,
     erpSyncAuthRequiresFullBootstrap,
@@ -885,6 +887,10 @@ class ApiSyncAdapter {
         await this.authenticate();
         this.setupOnlineDetection();
         console.log(`🌐 ApiSyncAdapter initialized for Master at ${config.masterUrl}`);
+
+        // Identidad del ERP (GET /version commit + /health projectRef): deja rastro en el
+        // diagnóstico al iniciar. No bloquea el arranque ni expone secretos.
+        void logErpIdentity();
     }
 
     /**
@@ -5572,9 +5578,55 @@ class ApiSyncAdapter {
     async pushDurableOutboxBatch(events: object[]): Promise<any> {
         if (!events.length) return { results: [] };
         if (events.length > 50) throw new Error('BATCH_EVENT_LIMIT_EXCEEDED');
-        return this.postOperationalPayload('/inbox/batch', { events }, {
-            maxRequestBytes: 512 * 1024,
-        });
+
+        // La capacidad del ERP manda, no el host: con `supports_batch_inbox !== true`
+        // (Alfa-RMS hoy) el lote responde 404 SYNC_BATCH_INBOX_DISABLED y el outbox durable
+        // se quedaría reintentando. Se envía evento por evento por `/inbox`.
+        const supportsBatchInbox = await getSupportsBatchInbox();
+        if (!supportsBatchInbox) {
+            return this.pushDurableOutboxEventsOneByOne(events);
+        }
+
+        try {
+            return await this.postOperationalPayload('/inbox/batch', { events }, {
+                maxRequestBytes: 512 * 1024,
+            });
+        } catch (error) {
+            if (!isBatchInboxDisabledError(error)) throw error;
+
+            markBatchInboxUnavailable();
+            console.info(
+                `🔁 ApiSyncAdapter: /inbox/batch no disponible en el ERP; reenviando ${events.length} evento(s) por /inbox`,
+            );
+            return this.pushDurableOutboxEventsOneByOne(events);
+        }
+    }
+
+    /**
+     * Envío evento por evento por `POST /inbox` con el contrato del ERP
+     * (`event_id`, `event_type`, `payload`).
+     *
+     * Devuelve un resultado por evento para que el outbox durable conserve su semántica de
+     * ack individual (idempotente por `event_id` del lado del ERP).
+     */
+    private async pushDurableOutboxEventsOneByOne(events: object[]): Promise<any> {
+        const eventResults: Array<{ eventId: string; status: string }> = [];
+
+        for (const event of events) {
+            const wire = event as Record<string, unknown>;
+            const single = toErpInboxEvent(wire);
+            const response = await this.postOperationalPayload('/inbox', single);
+            const payload = (response && typeof response === 'object') ? response as Record<string, unknown> : {};
+            const status = String(payload.status || '').trim().toLowerCase();
+            const duplicate = payload.duplicate === true || status === 'duplicate' || status === 'already_applied';
+
+            eventResults.push({
+                eventId: single.event_id,
+                status: duplicate ? 'DUPLICATE' : 'RECEIVED',
+            });
+        }
+
+        return { eventResults };
     }
 
     /**
@@ -6123,5 +6175,16 @@ class ApiSyncAdapter {
         }
     }
 }
+
+/**
+ * Detecta el rechazo del lote por capacidad (`SYNC_BATCH_INBOX_DISABLED`) tanto si el
+ * adaptador lo expone como `httpStatus` como si sólo llega en el mensaje.
+ */
+const isBatchInboxDisabledError = (error: unknown): boolean => {
+    const message = error instanceof Error ? error.message : String(error || '');
+    if (message.toUpperCase().includes('SYNC_BATCH_INBOX_DISABLED')) return true;
+    const httpStatus = Number((error as { httpStatus?: unknown } | null)?.httpStatus);
+    return httpStatus === 404 && /batch/i.test(message);
+};
 
 export const apiSyncAdapter = new ApiSyncAdapter();
