@@ -18,6 +18,10 @@ const LoyaltyDashboard: React.FC<LoyaltyDashboardProps> = ({
     onLinkCard,
     onUnlinkCard
 }) => {
+    // Pantalla heredada: deriva el nivel del saldo de puntos, que NO es como funciona
+    // EGO Club (el nivel sale del gasto anual y lo resuelve el ERP). Se conserva para no
+    // romper el flujo actual; `minPoints` es opcional porque el snapshot del ERP ya no
+    // lo envía, de ahí los `?? 0` para no producir NaN.
     const loyaltyTiers = config.loyalty?.tiers || [
         { id: 'bronze', name: 'BRONZE', minPoints: 0 },
         { id: 'silver', name: 'SILVER', minPoints: 500 },
@@ -25,16 +29,18 @@ const LoyaltyDashboard: React.FC<LoyaltyDashboardProps> = ({
         { id: 'platinum', name: 'PLATINUM', minPoints: 3000 }
     ];
 
+    const minPointsOf = (tier: { minPoints?: number }) => tier.minPoints ?? 0;
+
     const currentPoints = customer.loyaltyPoints || 0;
-    const currentTierIdx = [...loyaltyTiers].findIndex(t => currentPoints < t.minPoints) === -1
+    const currentTierIdx = [...loyaltyTiers].findIndex(t => currentPoints < minPointsOf(t)) === -1
         ? loyaltyTiers.length - 1
-        : Math.max(0, [...loyaltyTiers].findIndex(t => currentPoints < t.minPoints) - 1);
+        : Math.max(0, [...loyaltyTiers].findIndex(t => currentPoints < minPointsOf(t)) - 1);
 
     const currentTier = loyaltyTiers[currentTierIdx];
     const nextTier = loyaltyTiers[currentTierIdx + 1];
 
     const progressPercent = nextTier
-        ? Math.min(100, Math.max(0, ((currentPoints - currentTier.minPoints) / (nextTier.minPoints - currentTier.minPoints)) * 100))
+        ? Math.min(100, Math.max(0, ((currentPoints - minPointsOf(currentTier)) / (minPointsOf(nextTier) - minPointsOf(currentTier) || 1)) * 100))
         : 100;
 
     return (
@@ -88,7 +94,7 @@ const LoyaltyDashboard: React.FC<LoyaltyDashboardProps> = ({
                         <div className="flex justify-center md:justify-start">
                             {nextTier ? (
                                 <p className="text-[12px] font-bold text-white/90 bg-blue-400/20 px-4 py-1.5 rounded-full inline-block">
-                                    Faltan <span className="text-yellow-300 font-black">{(nextTier.minPoints - currentPoints).toLocaleString()}</span> puntos para alcanzar el nivel <span className="text-yellow-300">{nextTier.name}</span>
+                                    Faltan <span className="text-yellow-300 font-black">{(minPointsOf(nextTier) - currentPoints).toLocaleString()}</span> puntos para alcanzar el nivel <span className="text-yellow-300">{nextTier.name}</span>
                                 </p>
                             ) : (
                                 <p className="text-yellow-300 font-black flex items-center gap-2 text-xs uppercase tracking-widest">
