@@ -189,50 +189,91 @@ const applySecondPairPromotions = (
     return nextCart;
 };
 
+/**
+ * Vigencia de la promoción: estado, día de la semana, franja horaria, rango de
+ * fechas y alcance por terminal.
+ *
+ * Vive en una sola función porque estaba duplicada en `applyPromotions` y en
+ * `hasProductPromotion`, y cualquier regla nueva (audiencia, por ejemplo) tenía
+ * que escribirse dos veces o quedaba inconsistente entre el cobro y el badge.
+ */
+const isPromotionActiveNow = (promo: Promotion, terminalId: string, now: Date = new Date()): boolean => {
+    const schedule = promo.schedule;
+    if (!schedule?.isActive) return false;
+
+    const daysMap = ['D', 'L', 'M', 'X', 'J', 'V', 'S'];
+    if (!schedule.days.includes(daysMap[now.getDay()])) return false;
+
+    const minutesNow = now.getHours() * 60 + now.getMinutes();
+    const [startH, startM] = schedule.startTime.split(':').map(Number);
+    const [endH, endM] = schedule.endTime.split(':').map(Number);
+    if (minutesNow < startH * 60 + startM || minutesNow > endH * 60 + endM) return false;
+
+    if (schedule.startDate) {
+        const startDate = new Date(schedule.startDate);
+        startDate.setHours(0, 0, 0, 0);
+        if (now < startDate) return false;
+    }
+    if (schedule.endDate) {
+        const endDate = new Date(schedule.endDate);
+        endDate.setHours(23, 59, 59, 999);
+        if (now > endDate) return false;
+    }
+
+    // Sin terminal activo no se restringe: mismo comportamiento que antes.
+    if (promo.terminalIds && promo.terminalIds.length > 0 && terminalId) {
+        if (!promo.terminalIds.includes(terminalId)) return false;
+    }
+
+    return true;
+};
+
+/** Normaliza el nivel del cliente a la forma que usa el ERP ("GOLD", "BLACK", "STANDARD"). */
+export const normalizeLoyaltyTier = (value: unknown): string | null => {
+    if (value === null || value === undefined) return null;
+    const text = String(value).trim().toUpperCase();
+    return text.length > 0 ? text : null;
+};
+
+/** Niveles declarados en la audiencia de la promoción, normalizados. */
+const promotionAudienceTiers = (promo: Promotion): string[] => {
+    const tiers = promo.audience?.tiers;
+    if (!Array.isArray(tiers)) return [];
+    return tiers.map(tier => normalizeLoyaltyTier(tier)).filter((tier): tier is string => tier !== null);
+};
+
+/**
+ * Audiencia por nivel EGO Club.
+ *
+ * Sin `audience.tiers` (o con la lista vacía) la promoción aplica a todos, igual que
+ * antes de existir la audiencia. Con audiencia declarada y ticket **sin cliente
+ * identificado** la promoción NO aplica: no se asume STANDARD por defecto, porque
+ * prestar un beneficio de socio a un anónimo es un descuento regalado.
+ */
+export const promotionMatchesAudience = (promo: Promotion, customer?: Customer): boolean => {
+    const tiers = promotionAudienceTiers(promo);
+    if (tiers.length === 0) return true;
+
+    const customerTier = normalizeLoyaltyTier(customer?.tier);
+    if (!customerTier) return false;
+
+    return tiers.includes(customerTier);
+};
+
 export const applyPromotions = (cart: CartItem[], config: BusinessConfig, terminalId: string, customer?: Customer): CartItem[] => {
+    const today = new Date();
     const activePromotions = config.promotions?.filter(p => {
-        // 1. Check Active Status
-        if (!p.schedule.isActive) return false;
+        // 1-4. Vigencia (estado, día, hora, fechas y terminal)
+        if (!isPromotionActiveNow(p, terminalId, today)) return false;
 
-        // 2. Check Schedule (Day of Week)
-        const today = new Date();
-        const daysMap = ['D', 'L', 'M', 'X', 'J', 'V', 'S'];
-        const currentDayKey = daysMap[today.getDay()];
-        if (!p.schedule.days.includes(currentDayKey)) return false;
-
-        // 3. Check Time Range
-        const now = today.getHours() * 60 + today.getMinutes();
-        const [startH, startM] = p.schedule.startTime.split(':').map(Number);
-        const [endH, endM] = p.schedule.endTime.split(':').map(Number);
-        const start = startH * 60 + startM;
-        const end = endH * 60 + endM;
-        if (now < start || now > end) return false;
-
-        // 3.5 Check Date Range (NEW)
-        if (p.schedule.startDate) {
-            const startDate = new Date(p.schedule.startDate);
-            startDate.setHours(0, 0, 0, 0);
-            if (today < startDate) return false;
-        }
-        if (p.schedule.endDate) {
-            const endDate = new Date(p.schedule.endDate);
-            endDate.setHours(23, 59, 59, 999);
-            if (today > endDate) return false;
-        }
-
-        // 4. Check Terminal Scope
-        if (p.terminalIds && p.terminalIds.length > 0 && terminalId) {
-            if (!p.terminalIds.includes(terminalId)) return false;
-        }
-
-        // 5. Check Loyalty Conditions (NEW)
+        // 5. Check Loyalty Conditions (heredado: CUSTOMER_TIER, HAS_POINTS_MIN, HAS_WALLET)
         if (p.conditions && p.conditions.length > 0) {
             for (const condition of p.conditions) {
                 if (condition.type === 'HAS_WALLET') {
                     if (!customer || !customer.wallet || customer.wallet.status !== 'ACTIVE') return false;
                 }
                 if (condition.type === 'CUSTOMER_TIER') {
-                    if (!customer || customer.tier !== condition.value) return false;
+                    if (!customer || normalizeLoyaltyTier(customer.tier) !== normalizeLoyaltyTier(condition.value)) return false;
                 }
                 if (condition.type === 'HAS_POINTS_MIN') {
                     const minPoints = parseInt(condition.value, 10);
@@ -240,6 +281,9 @@ export const applyPromotions = (cart: CartItem[], config: BusinessConfig, termin
                 }
             }
         }
+
+        // 6. Audiencia por nivel EGO Club (T2)
+        if (!promotionMatchesAudience(p, customer)) return false;
 
         return true;
     }) || [];
@@ -389,45 +433,22 @@ export const applyPromotions = (cart: CartItem[], config: BusinessConfig, termin
 /**
  * Checks if a product has any active promotion applicable.
  * Used for UI badges.
+ *
+ * `customer` es opcional: cuando se pasa, el badge respeta la audiencia por nivel
+ * (un producto con promo sólo para GOLD/BLACK no se marca para un ticket anónimo).
  */
-export const hasProductPromotion = (product: any, config: BusinessConfig, terminalId: string): boolean => {
+export const hasProductPromotion = (
+    product: any,
+    config: BusinessConfig,
+    terminalId: string,
+    customer?: Customer,
+): boolean => {
     if (!config.promotions) return false;
 
-    // 1. Filter Active Promotions (Same logic as above)
-    const activePromotions = config.promotions.filter(p => {
-        if (!p.schedule.isActive) return false;
-
-        const today = new Date();
-        const daysMap = ['D', 'L', 'M', 'X', 'J', 'V', 'S'];
-        const currentDayKey = daysMap[today.getDay()];
-        if (!p.schedule.days.includes(currentDayKey)) return false;
-
-        const now = today.getHours() * 60 + today.getMinutes();
-        const [startH, startM] = p.schedule.startTime.split(':').map(Number);
-        const [endH, endM] = p.schedule.endTime.split(':').map(Number);
-        const start = startH * 60 + startM;
-        const end = endH * 60 + endM;
-        if (now < start || now > end) return false;
-
-        // Date Range (NEW)
-        if (p.schedule.startDate) {
-            const startDate = new Date(p.schedule.startDate);
-            startDate.setHours(0, 0, 0, 0);
-            if (today < startDate) return false;
-        }
-        if (p.schedule.endDate) {
-            const endDate = new Date(p.schedule.endDate);
-            endDate.setHours(23, 59, 59, 999);
-            if (today > endDate) return false;
-        }
-
-        // Terminal scope check
-        if (p.terminalIds && p.terminalIds.length > 0 && terminalId) {
-            if (!p.terminalIds.includes(terminalId)) return false;
-        }
-
-        return true;
-    });
+    const today = new Date();
+    const activePromotions = config.promotions.filter(p => (
+        isPromotionActiveNow(p, terminalId, today) && promotionMatchesAudience(p, customer)
+    ));
 
     // 2. Check if any active promotion targets this product
     return activePromotions.some(p => itemMatchesPromotionTarget(p, product as CartItem, config));
