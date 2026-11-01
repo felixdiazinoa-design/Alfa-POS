@@ -103,6 +103,7 @@ import { buildCloseTaxSummary } from './utils/closeReceiptSummary';
 import { buildZReportPaymentMethodSummary } from './utils/zReportPaymentSummary';
 import { applyPromotions, hasProductPromotion } from './utils/promotionEngine';
 import { calculateTransactionTaxSummary } from './utils/taxSummary';
+import { mapCustomersFromErp } from './utils/egoClub';
 import { calculateTransactionFiscalSummary } from './utils/fiscalBreakdown';
 import { extractTerminalOperationalDocumentState } from './utils/terminalConfigSnapshot';
 import { mergeDocumentSeriesCollection, resolveDocumentAssignmentId } from './utils/documentSeriesIdentity';
@@ -6549,7 +6550,8 @@ const AppContent: React.FC = () => {
           // collection so the bootstrap fallback cannot overwrite a synced
           // customer list with an empty array.
           const persistedCustomers = await db.get('customers') as Customer[];
-          setCustomers(Array.isArray(persistedCustomers) ? persistedCustomers : (data.customers || []));
+          // El ERP entrega loyalty_points/tier en snake_case; se normaliza en la ingesta (T3).
+          setCustomers(mapCustomersFromErp(Array.isArray(persistedCustomers) ? persistedCustomers : (data.customers || [])));
           setTransactions(data.transactions || []);
           const startupProducts = Array.isArray(data.products) ? data.products : [];
           setProducts(startupProducts);
@@ -7237,7 +7239,7 @@ const AppContent: React.FC = () => {
             }
           }
           break;
-        case 'customers': setCustomers(freshData as Customer[]); break;
+        case 'customers': setCustomers(mapCustomersFromErp(freshData)); break;
         case 'suppliers': setSuppliers(freshData as Supplier[]); break;
         case 'users': setUsers(visiblePosUsersForRuntime(freshData)); break;
         case 'roles': setRoles(Array.isArray(freshData) ? freshData as RoleDefinition[] : DEFAULT_ROLES); break;

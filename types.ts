@@ -1192,16 +1192,33 @@ export interface ScaleLabelConfig {
 
 
 
+/**
+ * Nivel del programa EGO Club tal como lo publica el ERP.
+ *
+ * `spendThreshold` / `earnUnitsPer100` / `minRedemptionUnits` son los campos reales del
+ * snapshot: el nivel se deriva del gasto anual (no del saldo), el cashback es
+ * `earnUnitsPer100` por cada RD$100 elegibles, y `minRedemptionUnits` es el umbral
+ * mínimo de canje del nivel.
+ *
+ * `minPoints`, `color` e `icon` se conservan opcionales por compatibilidad con las
+ * pantallas heredadas de fidelización que derivaban el nivel del saldo de puntos.
+ */
 export interface LoyaltyTier {
   id: string;
   name: string;
-  minPoints: number;
-  color: string;
+  spendThreshold?: number;
+  earnUnitsPer100?: number;
+  minRedemptionUnits?: number;
+  /** @deprecated El nivel se deriva del gasto anual, no del saldo de puntos. */
+  minPoints?: number;
+  color?: string;
   icon?: string;
 }
 
 export interface LoyaltyConfig {
   isEnabled: boolean;
+  /** 'UNIFIED' = una sola cuenta de puntos entre marcas/tiendas. */
+  earnMode?: 'UNIFIED' | string;
   earnRate: number; // Points per 1 unit of currency (e.g., 0.1 for 1 point per $10)
   redeemRate: number; // Value of 1 point (e.g., 0.10)
   minRedemptionPoints: number;

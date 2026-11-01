@@ -28,6 +28,7 @@ import {
 import { hasProductPromotion } from '../utils/promotionEngine';
 import { getDefaultFiscalProvider, getEffectiveFiscalComplianceConfig, getFiscalReserveAlert, isTerminalFiscalReceiptRequired, mapElectronicFiscalCodeToLegacy, resolveCreditNoteFiscalCode, resolveSaleFiscalCode } from '../utils/fiscal/fiscalHelpers';
 import { calculateTransactionTaxSummary } from '../utils/taxSummary';
+import { getTierBadgeClass, getTierLabel, isEgoClubEnabled } from '../utils/egoClub';
 import UnifiedPaymentModal from './PaymentModal';
 import {
    evaluateCreditSupervisorGate,
@@ -4731,6 +4732,11 @@ const POSInterface: React.FC<POSInterfaceProps> = ({
    const primaryLoyaltyCard = selectedCustomer ? getPrimaryLoyaltyCard(selectedCustomer) : undefined;
    const currentPoints = primaryLoyaltyCard?.pointsBalance || 0;
 
+   // Nivel EGO Club del cliente del ticket (lo resuelve el ERP; aquí sólo se muestra).
+   const egoClubTierLabel = selectedCustomer && isEgoClubEnabled(config)
+      ? getTierLabel(config, selectedCustomer.tier)
+      : '';
+
    // --- VISOR SYNC ---
    useEffect(() => {
       const displayConfig = activeTerminalConfig?.hardware?.customerDisplay;
@@ -7819,6 +7825,11 @@ const POSInterface: React.FC<POSInterfaceProps> = ({
                               <div className="w-6 h-6 bg-blue-200 text-blue-700 rounded-full flex items-center justify-center font-bold text-[10px]">{selectedCustomer.name.charAt(0)}</div>
                            )}
                            <span className="text-xs font-bold text-blue-900 truncate max-w-[150px]">{selectedCustomer.name}</span>
+                           {egoClubTierLabel && (
+                              <span className={`text-[9px] font-black uppercase tracking-wide px-1.5 py-0.5 rounded border ${getTierBadgeClass(selectedCustomer.tier)}`}>
+                                 {egoClubTierLabel}
+                              </span>
+                           )}
                         </div>
                         <div className="flex items-center gap-1">
                            <button
@@ -8077,6 +8088,11 @@ const POSInterface: React.FC<POSInterfaceProps> = ({
                         <div className="flex-1 min-w-0">
                            <div className="flex items-center gap-2">
                               <p className="font-bold text-gray-800 truncate">{selectedCustomer.name}</p>
+                              {egoClubTierLabel && (
+                                 <span className={`text-[9px] font-black uppercase tracking-wide px-1.5 py-0.5 rounded border ${getTierBadgeClass(selectedCustomer.tier)}`}>
+                                    {egoClubTierLabel}
+                                 </span>
+                              )}
                               {/* Save to contact feature temporarily disabled due to missing prop plumbing */}
                            </div>
                            <div className="flex items-center gap-2 flex-wrap">
