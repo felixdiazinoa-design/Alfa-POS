@@ -11,6 +11,7 @@ import {
 import { Customer, BusinessConfig, CustomerTransaction, CustomerAddress, NCFType, Wallet, LoyaltyCard, Transaction, User, Collection, Activity, WalletTransaction } from '../types';
 import { dgiiService, DGIIResponse } from '../services/dgii/DGIIValidationService';
 import { printTicket } from '../utils/printer';
+import { getTierBadgeClass, getTierLabel, isEgoClubEnabled } from '../utils/egoClub';
 import AccountReceivableModal from './AccountReceivableModal';
 import CreditAccountDashboard from './CreditAccountDashboard';
 import { agendaService } from '../services/AgendaService';
@@ -1008,12 +1009,14 @@ const CustomerManagement: React.FC<CustomerManagementProps> = ({
                                  <div>
                                     <h2 className="text-2xl font-black text-gray-900 leading-tight">{selectedCustomer.name}</h2>
                                     <div className="flex items-center gap-2 mt-1">
-                                       <span className={`px-2 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wide border ${selectedCustomer.tier === 'GOLD' ? 'bg-amber-100 text-amber-700 border-amber-200' :
-                                          selectedCustomer.tier === 'SILVER' ? 'bg-slate-100 text-slate-700 border-slate-200' :
-                                             'bg-orange-50 text-orange-700 border-orange-200'
-                                          }`}>
-                                          {selectedCustomer.tier || 'BRONZE'} MEMBER
-                                       </span>
+                                       {/* Nivel EGO Club resuelto por el ERP. Si el cliente no tiene
+                                           membresía no se muestra nada: antes se etiquetaba como
+                                           "BRONZE MEMBER", que inventaba un nivel inexistente. */}
+                                       {isEgoClubEnabled(config) && getTierLabel(config, selectedCustomer.tier) && (
+                                          <span className={`px-2 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wide border ${getTierBadgeClass(selectedCustomer.tier)}`}>
+                                             {getTierLabel(config, selectedCustomer.tier)}
+                                          </span>
+                                       )}
                                        {selectedCustomer.tags?.map(tag => (
                                           <span key={tag} className="text-[10px] font-bold text-gray-400">#{tag}</span>
                                        ))}

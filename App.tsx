@@ -48,6 +48,7 @@ import { apiSyncAdapter } from './services/sync/ApiSyncAdapter';
 import { backgroundSyncManager } from './services/sync/BackgroundSyncManager';
 import { calculateZReportStats } from './utils/analytics';
 import { applyPromotions, hasProductPromotion } from './utils/promotionEngine';
+import { mapCustomersFromErp } from './utils/egoClub';
 import { calculateTransactionFiscalSummary } from './utils/fiscalBreakdown';
 import { ZReportRecoveryService } from './services/recovery/ZReportRecoveryService';
 
@@ -1528,7 +1529,9 @@ const AppContent: React.FC = () => {
 
           setUsers(data.users || []);
           setRoles(data.roles || DEFAULT_ROLES);
-          setCustomers(data.customers || []);
+          // El ERP entrega loyalty_points/tier en snake_case; se normaliza en la ingesta
+          // para que el nivel llegue al ticket y el saldo no se pierda (T3).
+          setCustomers(mapCustomersFromErp(data.customers));
           setTransactions(data.transactions || []);
           setProducts(data.products || []);
           setWarehouses(data.warehouses || []);
@@ -1855,7 +1858,7 @@ const AppContent: React.FC = () => {
 
       switch (collection) {
         case 'products': setProducts(freshData as Product[]); break;
-        case 'customers': setCustomers(freshData as Customer[]); break;
+        case 'customers': setCustomers(mapCustomersFromErp(freshData)); break;
         case 'suppliers': setSuppliers(freshData as Supplier[]); break;
         case 'internalSequences': /* No state for this, used directly from DB */ break;
         case 'transactions': setTransactions(Array.isArray(freshData) ? freshData as Transaction[] : []); break;
