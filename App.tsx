@@ -49,7 +49,7 @@ import { backgroundSyncManager } from './services/sync/BackgroundSyncManager';
 import { calculateZReportStats } from './utils/analytics';
 import { applyPromotions, hasProductPromotion } from './utils/promotionEngine';
 import { mapCustomersFromErp } from './utils/egoClub';
-import { flushLoyaltyOutbox } from './services/loyalty/LoyaltyService';
+import { flushLoyaltyOutbox, enqueueSaleDocumentReport } from './services/loyalty/LoyaltyService';
 import { calculateTransactionFiscalSummary } from './utils/fiscalBreakdown';
 import { ZReportRecoveryService } from './services/recovery/ZReportRecoveryService';
 
@@ -987,26 +987,36 @@ const AppContent: React.FC = () => {
     if (!isDataLoaded) return;
 
     let cancelled = false;
-    const flush = () => {
+    const flush = async () => {
       if (cancelled) return;
-      flushLoyaltyOutbox().catch(error => console.warn('[EGO CLUB] flush de cola falló:', error));
+      try {
+        const result = await flushLoyaltyOutbox();
+        // El saldo autoritativo vive en el ERP: si algo se reportó, se fuerza un pull de
+        // la colección de clientes (el evento 'customersUpdated' re-mapea nivel y saldo).
+        // El POS nunca muestra un saldo calculado por su cuenta.
+        if (!cancelled && result.synced > 0) {
+          backgroundSyncManager.triggerSync().catch(console.error);
+        }
+      } catch (error) {
+        console.warn('[EGO CLUB] flush de cola falló:', error);
+      }
     };
 
     const handleVisibility = () => {
       if (document.hidden) return;
-      flush();
+      void flush();
     };
 
-    const intervalId = window.setInterval(flush, 60000);
-    window.addEventListener('online', flush);
+    const intervalId = window.setInterval(() => { void flush(); }, 60000);
+    window.addEventListener('online', handleVisibility);
     document.addEventListener('visibilitychange', handleVisibility);
 
-    flush();
+    void flush();
 
     return () => {
       cancelled = true;
       window.clearInterval(intervalId);
-      window.removeEventListener('online', flush);
+      window.removeEventListener('online', handleVisibility);
       document.removeEventListener('visibilitychange', handleVisibility);
     };
   }, [isDataLoaded]);
@@ -2676,6 +2686,16 @@ const AppContent: React.FC = () => {
     setTransactions(newTransactions);
     // setFilteredTransactions(newTransactions); // Assuming this is meant to be here if filtered transactions are used
     await db.saveDocument('transactions', txn);
+
+    // EGO Club (T6): el documento de venta ya está registrado; se reporta al ERP para que
+    // devengue los puntos. Se encola una sola vez por documento y fuera del flujo de
+    // impresión, así que la venta no espera a la red ni se duplica al reintentar.
+    if (config.loyalty?.isEnabled && txn.customerId && txn.status === 'COMPLETED') {
+      void enqueueSaleDocumentReport({
+        documentId: txn.id,
+        reference: txn.displayId || txn.id,
+      }).catch(error => console.warn('[EGO CLUB] no se pudo encolar el devengo:', error));
+    }
 
     // Trigger background sync
     backgroundSyncManager.triggerSync().catch(console.error);

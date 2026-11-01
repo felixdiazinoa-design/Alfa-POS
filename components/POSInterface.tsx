@@ -41,7 +41,7 @@ import { parseScaleBarcode } from '../utils/barcodeParser';
 import { transactionService } from '../services/transactionService';
 import { validateTerminalSeries } from '../utils/seriesValidation';
 import { applyPromotions } from '../utils/promotionEngine';
-import { calculatePointsEarned, getPrimaryLoyaltyCard } from '../utils/loyaltyEngine';
+import { getPrimaryLoyaltyCard } from '../utils/loyaltyEngine';
 import { couponService } from '../utils/couponService';
 import { transferStockToCommitted } from '../utils/inventoryEngine';
 import { useSupervisorAuth } from '../hooks/useSupervisorAuth';
@@ -1354,7 +1354,6 @@ const POSInterface: React.FC<POSInterfaceProps> = ({
       setSuccessToast(`Reserva ${reservation.code} ${isEditingRecoveredReservation ? 'actualizada' : 'creada'}`);
    };
 
-   const pointsEarned = useMemo(() => calculatePointsEarned(processedCart, config), [processedCart, config]);
    const primaryLoyaltyCard = selectedCustomer ? getPrimaryLoyaltyCard(selectedCustomer) : undefined;
    const currentPoints = primaryLoyaltyCard?.pointsBalance || 0;
 
@@ -3001,7 +3000,7 @@ const POSInterface: React.FC<POSInterfaceProps> = ({
                               </div>
                               <p className="text-[10px] font-bold text-gray-400 mt-1">
                                  {cart.reduce((acc, i) => acc + i.quantity, 0)} Artículos
-                                 {pointsEarned > 0 && <span className="text-purple-500 ml-2">• Ganarás +{pointsEarned} pts</span>}
+                                 {egoClubTierLabel && <span className="text-purple-500 ml-2">• Puntos EGO Club al confirmar</span>}
                               </p>
                            </div>
                            <button
@@ -3119,7 +3118,10 @@ const POSInterface: React.FC<POSInterfaceProps> = ({
                                     </div>
                                     <div className="text-right">
                                        <p className="text-[10px] text-slate-400 font-black uppercase tracking-widest">Total General</p>
-                                       {pointsEarned > 0 && <p className="text-[10px] font-bold text-purple-500">+{pointsEarned} Puntos</p>}
+                                       {/* Los puntos devengados los calcula el ERP sobre la base elegible
+                                           (sin ITBIS, sin ofertas, sin tarjeta de regalo ni wallet). El POS
+                                           no muestra una estimación propia. */}
+                                       {egoClubTierLabel && <p className="text-[10px] font-bold text-purple-500">Puntos al confirmar</p>}
                                     </div>
                                  </div>
                               </div>

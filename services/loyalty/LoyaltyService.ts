@@ -221,6 +221,33 @@ export const flushLoyaltyOutbox = async (): Promise<ProcessOutboxResult> => (
     processLoyaltyOutbox(sendLoyaltyOutboxItem)
 );
 
+/**
+ * Reporta al ERP el documento de venta para que devengue los puntos.
+ *
+ * - Se encola **una vez por documento** (clave estable derivada del id local del
+ *   documento), fuera del flujo de impresión: la venta nunca espera a la red.
+ * - El ERP es idempotente por `document_id`, así que reintentar es seguro; aun así la
+ *   clave evita encolar dos veces el mismo documento desde el POS.
+ * - El POS **no** calcula los puntos devengados: el ERP aplica la base elegible (sin
+ *   ITBIS, sin ofertas, sin tarjeta de regalo ni wallet) y la tasa del nivel.
+ */
+export const enqueueSaleDocumentReport = async (params: {
+    documentId: string;
+    reference?: string;
+}): Promise<LoyaltyOutboxItem | null> => {
+    const documentId = String(params.documentId || '').trim();
+    if (!documentId) return null;
+
+    const item = await enqueueLoyaltyOperation(
+        'SALE_DOCUMENT',
+        buildSaleDocumentOperationId(documentId),
+        { document_id: documentId },
+        params.reference || documentId,
+    );
+    void flushLoyaltyOutbox();
+    return item;
+};
+
 export const getLoyaltyOutboxForCustomer = async (cedulaOrName: string): Promise<LoyaltyOutboxItem[]> => {
     const needle = String(cedulaOrName || '').trim().toUpperCase();
     if (!needle) return [];
