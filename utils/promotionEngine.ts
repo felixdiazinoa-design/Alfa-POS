@@ -1,9 +1,84 @@
 import type { CartItem, BusinessConfig, Promotion, Customer } from '../types';
 
-const itemMatchesPromotionTarget = (promo: Promotion, item: CartItem, config: BusinessConfig): boolean => {
+/**
+ * Normaliza un identificador para compararlo sin depender de mayúsculas ni espacios.
+ * El ERP hidrata `targetRefs` con ids, SKUs, códigos externos y códigos de barra tal
+ * como los tiene en su catálogo, así que la comparación estricta por cadena fallaría
+ * por diferencias de formato que no significan nada para el negocio.
+ */
+const normalizeRef = (value: unknown): string | null => {
+    if (value === null || value === undefined) return null;
+    const text = String(value).trim();
+    return text.length > 0 ? text.toUpperCase() : null;
+};
+
+/**
+ * Identificadores con los que una línea del ticket puede ser referida por una promoción.
+ *
+ * Sólo se usan identificadores de la propia línea (no de todas las variantes del
+ * producto): si se incluyeran los SKUs de las demás variantes, una promoción VARIANT
+ * de la variante B descontaría la línea de la variante A del mismo producto.
+ *
+ * `sku` y `externalCode` no están declarados en `Product`/`CartItem` porque el snapshot
+ * del ERP no los tipa todavía; se leen de forma defensiva para no romper el contrato.
+ */
+const collectItemRefs = (item: CartItem): Set<string> => {
+    const refs = new Set<string>();
+    const add = (value: unknown) => {
+        const normalized = normalizeRef(value);
+        if (normalized) refs.add(normalized);
+    };
+    const extra = item as unknown as Record<string, unknown>;
+
+    add(item.id);
+    add(item.variantSku);
+    add(item.barcode);
+    add(extra.sku);
+    add(extra.externalCode);
+    add(extra.external_code);
+
+    return refs;
+};
+
+const matchesAnyTargetRef = (promo: Promotion, item: CartItem): boolean => {
+    const targetRefs = Array.isArray(promo.targetRefs) ? promo.targetRefs : [];
+    if (targetRefs.length === 0) return false;
+
+    const itemRefs = collectItemRefs(item);
+    return targetRefs.some(ref => {
+        const normalized = normalizeRef(ref);
+        return normalized !== null && itemRefs.has(normalized);
+    });
+};
+
+/**
+ * Resuelve si la línea participa de la promoción.
+ *
+ * - `VARIANT`: coincide si `targetRefs` contiene el SKU, código externo o código de
+ *   barra de la línea. Se acepta también `targetValue` como respaldo, porque las
+ *   promociones de una sola variante se configuran así y `VARIANT` no existía antes
+ *   (no hay comportamiento heredado que preservar).
+ * - `BRAND`: misma comprobación por `targetRefs` (el ERP mete ahí los ids, SKUs,
+ *   códigos externos y códigos de barra de todos los ítems de la marca) y, como
+ *   respaldo, compara `item.brandId`/`brand_id` con `targetValue`.
+ */
+export const itemMatchesPromotionTarget = (promo: Promotion, item: CartItem, config: BusinessConfig): boolean => {
     if (promo.targetType === 'ALL') return true;
     if (promo.targetType === 'PRODUCT' && promo.targetValue === item.id) return true;
     if (promo.targetType === 'CATEGORY' && promo.targetValue === item.category) return true;
+
+    if (promo.targetType === 'VARIANT') {
+        if (matchesAnyTargetRef(promo, item)) return true;
+        return normalizeRef(promo.targetValue) !== null
+            && normalizeRef(promo.targetValue) === normalizeRef(item.variantSku);
+    }
+
+    if (promo.targetType === 'BRAND') {
+        if (matchesAnyTargetRef(promo, item)) return true;
+        const extra = item as unknown as Record<string, unknown>;
+        const itemBrand = normalizeRef(item.brandId ?? extra.brand_id);
+        return itemBrand !== null && itemBrand === normalizeRef(promo.targetValue);
+    }
 
     if (promo.targetType === 'GROUP') {
         const group = config.productGroups?.find(g => g.id === promo.targetValue);
