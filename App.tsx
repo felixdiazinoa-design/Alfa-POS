@@ -104,6 +104,7 @@ import { buildZReportPaymentMethodSummary } from './utils/zReportPaymentSummary'
 import { applyPromotions, hasProductPromotion } from './utils/promotionEngine';
 import { calculateTransactionTaxSummary } from './utils/taxSummary';
 import { mapCustomersFromErp } from './utils/egoClub';
+import { flushLoyaltyOutbox } from './services/loyalty/LoyaltyService';
 import { calculateTransactionFiscalSummary } from './utils/fiscalBreakdown';
 import { extractTerminalOperationalDocumentState } from './utils/terminalConfigSnapshot';
 import { mergeDocumentSeriesCollection, resolveDocumentAssignmentId } from './utils/documentSeriesIdentity';
@@ -5800,6 +5801,36 @@ const AppContent: React.FC = () => {
       document.removeEventListener('visibilitychange', handleVisibility);
     };
   }, [flushOfflinePrintQueue, isDataLoaded]);
+
+  // Cola de fidelización EGO Club: altas de socio y devengos pendientes se reintentan
+  // al arrancar, al recuperar conexión y periódicamente. Nunca bloquea el cobro.
+  useEffect(() => {
+    if (!isDataLoaded) return;
+
+    let cancelled = false;
+    const flush = () => {
+      if (cancelled) return;
+      flushLoyaltyOutbox().catch(error => console.warn('[EGO CLUB] flush de cola falló:', error));
+    };
+
+    const handleVisibility = () => {
+      if (document.hidden) return;
+      flush();
+    };
+
+    const intervalId = window.setInterval(flush, 60000);
+    window.addEventListener('online', flush);
+    document.addEventListener('visibilitychange', handleVisibility);
+
+    flush();
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(intervalId);
+      window.removeEventListener('online', flush);
+      document.removeEventListener('visibilitychange', handleVisibility);
+    };
+  }, [isDataLoaded]);
 
   useEffect(() => {
     const handleAutoPrint = async (event: Event) => {
