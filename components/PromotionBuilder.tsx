@@ -5,7 +5,7 @@ import {
    CalendarDays, ShoppingBag, ArrowRight, Plus, Trash2, Edit, Monitor,
    TrendingUp, Lightbulb, BarChart3
 } from 'lucide-react';
-import { Product, BusinessConfig, Promotion, PromotionType, PromotionRecommendation, Transaction } from '../types';
+import { Product, BusinessConfig, Promotion, PromotionType, PromotionTargetType, PromotionRecommendation, Transaction } from '../types';
 import { calculateEffectiveness, generateRecommendations } from '../utils/promotionAnalytics';
 import CouponManager from './CouponManager';
 
@@ -73,8 +73,11 @@ const PromotionBuilder: React.FC<PromotionBuilderProps> = ({ products, config, t
    // Form State
    const [promoName, setPromoName] = useState('');
    const [selectedType, setSelectedType] = useState<PromotionType>('DISCOUNT');
-   const [targetType, setTargetType] = useState<'PRODUCT' | 'CATEGORY' | 'SEASON' | 'GROUP' | 'ALL'>('PRODUCT');
+   const [targetType, setTargetType] = useState<PromotionTargetType>('PRODUCT');
    const [targetValue, setTargetValue] = useState('');
+   // VARIANT no se resuelve por un único id: el ERP hidrata los SKU/códigos en targetRefs,
+   // así que el editor los captura como lista separada por comas.
+   const [targetRefsInput, setTargetRefsInput] = useState('');
    const [benefitValue, setBenefitValue] = useState<number>(0);
    const [activeDays, setActiveDays] = useState<string[]>(['L', 'M', 'X', 'J', 'V', 'S', 'D']);
    const [timeStart, setTimeStart] = useState('00:00');
@@ -95,6 +98,7 @@ const PromotionBuilder: React.FC<PromotionBuilderProps> = ({ products, config, t
    const categories = Array.from(new Set(products.map(p => p.category)));
    const seasons = config.seasons || [];
    const groups = config.productGroups || [];
+   const brands = config.brands || [];
    const promotions = config.promotions || [];
 
    // Handlers
@@ -108,6 +112,7 @@ const PromotionBuilder: React.FC<PromotionBuilderProps> = ({ products, config, t
       setSelectedType('DISCOUNT');
       setTargetType('PRODUCT');
       setTargetValue('');
+      setTargetRefsInput('');
       setBenefitValue(0);
       setActiveDays(['L', 'M', 'X', 'J', 'V', 'S', 'D']);
       setTimeStart('00:00');
@@ -129,6 +134,7 @@ const PromotionBuilder: React.FC<PromotionBuilderProps> = ({ products, config, t
       setSelectedType(promo.type);
       setTargetType(promo.targetType);
       setTargetValue(promo.targetValue);
+      setTargetRefsInput((promo.targetRefs || []).join(', '));
       setBenefitValue(promo.benefitValue);
       setActiveDays(promo.schedule.days);
       setTimeStart(promo.schedule.startTime);
@@ -165,8 +171,19 @@ const PromotionBuilder: React.FC<PromotionBuilderProps> = ({ products, config, t
    };
 
    const handleSave = () => {
-      if (!promoName || (targetType !== 'ALL' && !targetValue)) {
+      const parsedRefs = targetRefsInput
+         .split(',')
+         .map(ref => ref.trim())
+         .filter(Boolean);
+      const requiresTargetValue = targetType !== 'ALL' && targetType !== 'VARIANT';
+
+      if (!promoName || (requiresTargetValue && !targetValue)) {
          alert("Por favor completa los campos requeridos");
+         return;
+      }
+
+      if (targetType === 'VARIANT' && parsedRefs.length === 0) {
+         alert("Indica al menos un SKU o código de barra de la variante");
          return;
       }
 
@@ -176,6 +193,7 @@ const PromotionBuilder: React.FC<PromotionBuilderProps> = ({ products, config, t
          type: selectedType,
          targetType,
          targetValue,
+         targetRefs: parsedRefs.length > 0 ? parsedRefs : undefined,
          benefitValue,
 
          trigger: selectedType === 'CONDITIONAL_TARGET' ? {
@@ -427,17 +445,30 @@ const PromotionBuilder: React.FC<PromotionBuilderProps> = ({ products, config, t
 
                               <select
                                  value={targetType}
-                                 onChange={(e) => setTargetType(e.target.value as any)}
+                                 onChange={(e) => setTargetType(e.target.value as PromotionTargetType)}
                                  className="bg-white border border-gray-200 rounded-xl px-3 py-2 text-sm font-bold text-gray-700 outline-none focus:ring-2 focus:ring-blue-100"
                               >
                                  <option value="PRODUCT">Producto Específico</option>
                                  <option value="CATEGORY">Categoría Completa</option>
                                  <option value="SEASON">Por Temporada</option>
                                  <option value="GROUP">Por Grupo/Colección</option>
+                                 <option value="BRAND">Marca Completa</option>
+                                 <option value="VARIANT">Variante (SKU)</option>
                                  <option value="ALL">Cualquier Producto</option>
                               </select>
 
-                              {targetType !== 'ALL' && (
+                              {(targetType === 'VARIANT' || targetType === 'BRAND') && (
+                                 <input
+                                    value={targetRefsInput}
+                                    onChange={(e) => setTargetRefsInput(e.target.value)}
+                                    placeholder={targetType === 'VARIANT'
+                                       ? 'SKUs o códigos de barra separados por coma'
+                                       : 'SKUs, códigos externos o de barra de la marca (opcional)'}
+                                    className="flex-1 bg-white border border-gray-200 rounded-xl px-3 py-2 text-sm text-gray-700 outline-none focus:ring-2 focus:ring-blue-100 w-full md:w-auto"
+                                 />
+                              )}
+
+                              {targetType !== 'ALL' && targetType !== 'VARIANT' && (
                                  <select
                                     value={targetValue}
                                     onChange={(e) => setTargetValue(e.target.value)}
@@ -448,6 +479,7 @@ const PromotionBuilder: React.FC<PromotionBuilderProps> = ({ products, config, t
                                     {targetType === 'CATEGORY' && categories.map(c => <option key={c} value={c}>{c}</option>)}
                                     {targetType === 'SEASON' && seasons.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
                                     {targetType === 'GROUP' && groups.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
+                                    {targetType === 'BRAND' && brands.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
                                  </select>
                               )}
                            </div>

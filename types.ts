@@ -1215,8 +1215,19 @@ export interface StockTransfer {
 }
 
 export type PromotionType = 'DISCOUNT' | 'BOGO' | 'SECOND_PAIR' | 'HAPPY_HOUR' | 'CONDITIONAL_TARGET' | 'BUNDLE';
-export type PromotionTargetType = 'ALL' | 'PRODUCT' | 'CATEGORY' | 'GROUP' | 'SEASON';
+export type PromotionTargetType = 'ALL' | 'PRODUCT' | 'CATEGORY' | 'GROUP' | 'SEASON' | 'BRAND' | 'VARIANT';
 export type PromotionBenefitType = 'DISCOUNT_PERCENT' | 'FIXED_PRICE' | 'CASHBACK' | 'POINTS_MULTIPLIER';
+
+/** Niveles del programa EGO Club, resueltos por el ERP a partir del gasto anual. */
+export type LoyaltyTierId = 'STANDARD' | 'GOLD' | 'BLACK';
+
+/**
+ * Audiencia de una promoción por nivel EGO Club.
+ * Sin `tiers` (o con la lista vacía) la promoción aplica a todos, como antes.
+ */
+export interface PromotionAudience {
+  tiers?: LoyaltyTierId[];
+}
 
 export interface PromotionCondition {
   type: 'HAS_WALLET' | 'CUSTOMER_TIER' | 'HAS_POINTS_MIN';
@@ -1242,13 +1253,22 @@ export interface Promotion {
 
   // Target
   targetType: PromotionTargetType;
-  targetValue?: string; // ID of Product, Category, Group, Season
+  targetValue?: string; // ID of Product, Category, Group, Season, Brand
+  /**
+   * Identificadores con los que el ERP hidrata el objetivo: ids internos, SKUs,
+   * códigos externos y códigos de barra de los ítems alcanzados (usado por
+   * BRAND y VARIANT).
+   */
+  targetRefs?: string[];
   targetStrategy?: {
     mode: 'CHEAPEST_ITEM' | 'MOST_EXPENSIVE_ITEM' | 'SLOW_MOVER' | 'CATEGORY_CHEAPEST';
     filterValue?: string | number; // Category ID or Days threshold
     tieBreaker?: 'FIRST_ADDED' | 'LAST_ADDED';
     allowSelfTrigger?: boolean;
   };
+
+  // Audiencia (EGO Club). Vacío o ausente = aplica a todos.
+  audience?: PromotionAudience;
 
   // Benefit
   benefitType?: PromotionBenefitType; // Optional for backward compatibility, defaults to DISCOUNT implied by type
