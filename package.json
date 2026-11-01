@@ -26,7 +26,8 @@
     "start:dev": "concurrently \"npm run server\" \"npm run dev\" \"npm run kds\"",
     "start:mobile": "USE_HTTPS=true npm run start:dev",
     "start": "npm run start:dev",
-    "test:catalog-sync": "tsx --test tests/catalogEditPersistence.test.ts tests/catalogEditQueue.test.ts tests/catalogConflictPermissions.test.ts tests/catalogSnapshotFence.test.ts tests/catalogSnapshotPreservationContract.test.ts tests/catalogMultiTerminalRoundTrip.test.ts tests/catalogLocalChanges.test.ts tests/catalogReleaseFlag.test.ts tests/categoryOptions.test.ts tests/configPushV2Contract.test.ts tests/configPushV2Outbox.test.ts tests/productEditorLayout.test.ts tests/productTaxSnapshot.test.ts tests/taxIdentity.test.ts && node tests/runAutomaticCatalogSaves.mjs"
+    "test:catalog-sync": "tsx --test tests/catalogEditPersistence.test.ts tests/catalogEditQueue.test.ts tests/catalogConflictPermissions.test.ts tests/catalogSnapshotFence.test.ts tests/catalogSnapshotPreservationContract.test.ts tests/catalogMultiTerminalRoundTrip.test.ts tests/catalogLocalChanges.test.ts tests/catalogReleaseFlag.test.ts tests/categoryOptions.test.ts tests/configPushV2Contract.test.ts tests/configPushV2Outbox.test.ts tests/productEditorLayout.test.ts tests/productTaxSnapshot.test.ts tests/taxIdentity.test.ts && node tests/runAutomaticCatalogSaves.mjs",
+    "test:erp-sync": "tsx --test tests/erpAlfaRmsContract.test.ts tests/erpBatchCapability.test.ts tests/syncLegacyEndpointAuth.test.ts tests/durableOutboxBatchSender.test.ts"
   },
   "dependencies": {
     "@capacitor-community/sqlite": "^8.0.0",
