@@ -15,6 +15,7 @@ import { getTierBadgeClass, getTierLabel, isEgoClubEnabled } from '../utils/egoC
 import { listLoyaltyOutbox, type LoyaltyOutboxItem } from '../utils/loyaltyOutbox';
 import { flushLoyaltyOutbox } from '../services/loyalty/LoyaltyService';
 import EgoClubEnrollModal from './EgoClubEnrollModal';
+import EgoClubCard from './EgoClubCard';
 import AccountReceivableModal from './AccountReceivableModal';
 import CreditAccountDashboard from './CreditAccountDashboard';
 import { agendaService } from '../services/AgendaService';
@@ -72,6 +73,7 @@ const CustomerManagement: React.FC<CustomerManagementProps> = ({
 
    // EGO Club: alta de socio y estado de la cola de envío al ERP
    const [isEgoEnrollOpen, setIsEgoEnrollOpen] = useState(false);
+   const [isEgoCardOpen, setIsEgoCardOpen] = useState(false);
    const [loyaltyQueue, setLoyaltyQueue] = useState<LoyaltyOutboxItem[]>([]);
    const [isLoyaltyQueueOpen, setIsLoyaltyQueueOpen] = useState(false);
 
@@ -1098,6 +1100,15 @@ const CustomerManagement: React.FC<CustomerManagementProps> = ({
 
                               {/* Actions */}
                               <div className="flex gap-2 w-full md:w-auto">
+                                 {isEgoClubEnabled(config) && (
+                                    <button
+                                       onClick={() => setIsEgoCardOpen(true)}
+                                       className="flex-1 md:flex-none py-2 px-4 bg-slate-900 text-white rounded-xl font-black text-sm shadow-lg hover:bg-slate-800 transition-all flex items-center justify-center gap-2"
+                                       title="Tarjeta digital del socio"
+                                    >
+                                       <BadgeCheck size={18} /> <span className="hidden lg:inline">Tarjeta EGO Club</span>
+                                    </button>
+                                 )}
                                  {onSelect && (
                                     <button
                                        onClick={() => onSelect(selectedCustomer)}
@@ -2028,6 +2039,15 @@ const CustomerManagement: React.FC<CustomerManagementProps> = ({
                config={config}
                onClose={() => setIsEgoEnrollOpen(false)}
                onEnrolled={() => { void refreshLoyaltyQueue(); }}
+            />
+         )}
+
+         {isEgoCardOpen && selectedCustomer && (
+            <EgoClubCard
+               config={config}
+               customer={selectedCustomer}
+               currencySymbol={config.currencySymbol || 'RD$'}
+               onClose={() => setIsEgoCardOpen(false)}
             />
          )}
       </div>
