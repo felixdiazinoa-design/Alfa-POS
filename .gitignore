@@ -11,6 +11,8 @@ node_modules
 dist
 dist-ssr
 *.local
+# Caché local de npm cuando el HOME no es escribible (entornos de agente/CI)
+.npm-cache
 
 # Editor directories and files
 .vscode/*
