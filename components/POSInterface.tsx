@@ -44,7 +44,7 @@ import ScaleModal from './ScaleModal';
 import GlobalDiscountModal from './GlobalDiscountModal';
 import LoyaltyScanModal from './LoyaltyScanModal';
 import LoyaltyRedeemModal from './LoyaltyRedeemModal';
-import { buildRedemptionId } from '../services/loyalty/LoyaltyService';
+import { buildRedemptionId, getLoyaltyChannelStatus } from '../services/loyalty/LoyaltyService';
 import TrackingSelectionModal from './TrackingSelectionModal';
 import { db } from '../utils/db';
 import { validateTerminalDocument } from '../utils/validation';
@@ -2209,6 +2209,9 @@ const POSInterface: React.FC<POSInterfaceProps> = ({
    const [showLoyaltyRedeemModal, setShowLoyaltyRedeemModal] = useState(false);
    const [productionRoutingPrompt, setProductionRoutingPrompt] = useState<ProductionRoutingPromptState | null>(null);
    const [returnToTableMapAfterPayment, setReturnToTableMapAfterPayment] = useState(false);
+
+   // El canje sólo se ofrece si el ERP publica el canal de lealtad en esta caja.
+   const loyaltyRedeemChannel = getLoyaltyChannelStatus('/loyalty/redeem');
    const [showTicketOptions, setShowTicketOptions] = useState(false);
    const [showParkedList, setShowParkedList] = useState(false);
    const [showParkAliasModal, setShowParkAliasModal] = useState(false);
@@ -8157,7 +8160,7 @@ const POSInterface: React.FC<POSInterfaceProps> = ({
                            </div>
                         </div>
                         <div className="flex items-center gap-2">
-                           {isEgoClubEnabled(config) && (selectedCustomer.loyaltyPoints || 0) > 0 && (
+                           {isEgoClubEnabled(config) && loyaltyRedeemChannel.enabled && (selectedCustomer.loyaltyPoints || 0) > 0 && (
                               <button
                                  onClick={() => setShowLoyaltyRedeemModal(true)}
                                  title="Canjear puntos EGO Club"

@@ -13,7 +13,7 @@ import { dgiiService, DGIIResponse } from '../services/dgii/DGIIValidationServic
 import { printTicket } from '../utils/printer';
 import { getTierBadgeClass, getTierLabel, isEgoClubEnabled } from '../utils/egoClub';
 import { listLoyaltyOutbox, type LoyaltyOutboxItem } from '../utils/loyaltyOutbox';
-import { flushLoyaltyOutbox } from '../services/loyalty/LoyaltyService';
+import { flushLoyaltyOutbox, getLoyaltyChannelStatus } from '../services/loyalty/LoyaltyService';
 import EgoClubEnrollModal from './EgoClubEnrollModal';
 import EgoClubCard from './EgoClubCard';
 import AccountReceivableModal from './AccountReceivableModal';
@@ -97,6 +97,8 @@ const CustomerManagement: React.FC<CustomerManagementProps> = ({
    const [isEgoCardOpen, setIsEgoCardOpen] = useState(false);
    const [loyaltyQueue, setLoyaltyQueue] = useState<LoyaltyOutboxItem[]>([]);
    const [isLoyaltyQueueOpen, setIsLoyaltyQueueOpen] = useState(false);
+   // El alta de socio depende del canal de lealtad del ERP (bandera + ruta publicada).
+   const egoEnrollChannel = getLoyaltyChannelStatus('/loyalty/enroll');
 
    // Form State
    const [formData, setFormData] = useState<Partial<Customer>>({});
@@ -1086,9 +1088,14 @@ const CustomerManagement: React.FC<CustomerManagementProps> = ({
                {isEgoClubEnabled(config) && (
                   <button
                      onClick={() => setIsEgoEnrollOpen(true)}
-                     className="px-4 py-2.5 rounded-xl font-bold bg-gray-900 text-white shadow-lg flex items-center gap-2 active:scale-95 transition-all"
+                     disabled={!egoEnrollChannel.enabled}
+                     title={egoEnrollChannel.enabled ? 'Alta de socio EGO Club' : (egoEnrollChannel.reason || 'Alta no disponible en esta caja')}
+                     className="px-4 py-2.5 rounded-xl font-bold bg-gray-900 text-white shadow-lg flex items-center gap-2 active:scale-95 transition-all disabled:bg-gray-300 disabled:shadow-none"
                   >
                      <BadgeCheck size={18} /> Alta EGO Club
+                     {!egoEnrollChannel.enabled && (
+                        <span className="text-[10px] font-black uppercase tracking-wide text-gray-600">no disponible</span>
+                     )}
                   </button>
                )}
                {onSelect && selectedCustomer && (

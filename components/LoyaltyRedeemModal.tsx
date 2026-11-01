@@ -2,7 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { AlertCircle, Coins, Loader2, X } from 'lucide-react';
 import type { BusinessConfig, Customer } from '../types';
 import { calculateRedemptionBounds, getTierLabel, pointsToCurrency } from '../utils/egoClub';
-import { redeemPoints } from '../services/loyalty/LoyaltyService';
+import { getLoyaltyChannelStatus, redeemPoints } from '../services/loyalty/LoyaltyService';
 
 interface LoyaltyRedeemModalProps {
     config: BusinessConfig;
@@ -24,6 +24,10 @@ interface LoyaltyRedeemModalProps {
  * descuento y la línea del ticket no se toca. El tope es
  * `min(puntos disponibles, total del ticket / tasa de canje)` y el mínimo es el umbral de
  * canje del nivel del socio (un umbral, no un saldo residual).
+ *
+ * Si el canal de lealtad no está disponible en esta caja (`/loyalty/redeem` no publicado o
+ * bandera apagada), el modal se muestra degradado: explica el motivo y no deja canjear,
+ * sin bloquear la venta ni mostrar un error de red.
  */
 const LoyaltyRedeemModal: React.FC<LoyaltyRedeemModalProps> = ({
     config,
@@ -34,6 +38,9 @@ const LoyaltyRedeemModal: React.FC<LoyaltyRedeemModalProps> = ({
     onClose,
     onRedeemed,
 }) => {
+    const channel = useMemo(() => getLoyaltyChannelStatus('/loyalty/redeem'), []);
+    const redemptionEnabled = channel.enabled;
+
     const bounds = useMemo(() => calculateRedemptionBounds({
         availablePoints,
         ticketTotal,
@@ -53,6 +60,10 @@ const LoyaltyRedeemModal: React.FC<LoyaltyRedeemModalProps> = ({
 
     const handleConfirm = async () => {
         setError(null);
+        if (!redemptionEnabled) {
+            setError(channel.reason || 'Canje no disponible en esta caja');
+            return;
+        }
         if (invalid) {
             setError(`El máximo canjeable en este ticket es ${bounds.max.toLocaleString('es-DO')} puntos`);
             return;
@@ -67,7 +78,8 @@ const LoyaltyRedeemModal: React.FC<LoyaltyRedeemModalProps> = ({
             });
 
             if (!result.ok) {
-                // Falla cerrada: no se aplica nada y se avisa al cajero.
+                // Falla cerrada: no se aplica nada y se avisa al cajero. Si la capacidad no
+                // está publicada, el mensaje ya viene como "no disponible en esta caja".
                 setError(result.error || 'No se pudo canjear los puntos');
                 return;
             }
@@ -103,6 +115,16 @@ const LoyaltyRedeemModal: React.FC<LoyaltyRedeemModalProps> = ({
                 </header>
 
                 <div className="px-5 py-5 space-y-4">
+                    {!redemptionEnabled && (
+                        <div className="flex items-start gap-2 p-3 rounded-xl bg-amber-50 border border-amber-200 text-amber-800">
+                            <AlertCircle size={16} className="mt-0.5 shrink-0" />
+                            <p className="text-[11px] font-bold">
+                                {channel.reason || 'Canje no disponible en esta caja.'}
+                                {' '}El saldo mostrado es el último sincronizado con el ERP.
+                            </p>
+                        </div>
+                    )}
+
                     <div className="grid grid-cols-3 gap-2 text-center">
                         <div className="p-2 rounded-xl bg-gray-50 border border-gray-100">
                             <p className="text-[10px] font-black uppercase text-gray-400">Disponibles</p>
@@ -133,7 +155,7 @@ const LoyaltyRedeemModal: React.FC<LoyaltyRedeemModalProps> = ({
                             min={bounds.minAmount}
                             max={bounds.max}
                             value={pointsInput}
-                            disabled={!bounds.canRedeem}
+                            disabled={!redemptionEnabled || !bounds.canRedeem}
                             onChange={(event) => setPointsInput(event.target.value)}
                             className={`mt-1 w-full rounded-xl border-2 px-3 py-2 text-lg font-black text-gray-900 outline-none disabled:bg-gray-100 ${
                                 invalid && points > 0 ? 'border-red-300 bg-red-50' : 'border-gray-200 focus:border-blue-400'
@@ -143,7 +165,7 @@ const LoyaltyRedeemModal: React.FC<LoyaltyRedeemModalProps> = ({
                             <span className="text-[11px] font-bold text-gray-500">
                                 Equivale a {currencySymbol}{value.toFixed(2)}
                             </span>
-                            {bounds.canRedeem && (
+                            {redemptionEnabled && bounds.canRedeem && (
                                 <button
                                     type="button"
                                     onClick={() => setPointsInput(String(bounds.max))}
@@ -159,7 +181,7 @@ const LoyaltyRedeemModal: React.FC<LoyaltyRedeemModalProps> = ({
                         <span className="text-[11px] font-black uppercase tracking-wide text-gray-500">Motivo</span>
                         <input
                             value={reason}
-                            disabled={!bounds.canRedeem}
+                            disabled={!redemptionEnabled || !bounds.canRedeem}
                             onChange={(event) => setReason(event.target.value)}
                             className="mt-1 w-full rounded-xl border-2 border-gray-200 px-3 py-2 text-sm font-bold text-gray-800 outline-none focus:border-blue-400 disabled:bg-gray-100"
                         />
@@ -180,7 +202,7 @@ const LoyaltyRedeemModal: React.FC<LoyaltyRedeemModalProps> = ({
                     </button>
                     <button
                         onClick={handleConfirm}
-                        disabled={!bounds.canRedeem || saving || invalid}
+                        disabled={!redemptionEnabled || !bounds.canRedeem || saving || invalid}
                         className="px-5 py-2 rounded-xl text-sm font-black text-white bg-emerald-600 hover:bg-emerald-700 disabled:bg-gray-300 flex items-center gap-2"
                     >
                         {saving ? <Loader2 size={16} className="animate-spin" /> : <Coins size={16} />}

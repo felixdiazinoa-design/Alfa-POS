@@ -156,14 +156,51 @@ export const markLoyaltyOperationFailed = async (id: string, error: string): Pro
     });
 };
 
+/**
+ * La capacidad no está disponible (bandera apagada o ruta no publicada en el ERP).
+ *
+ * No es un fallo de red ni un error de negocio: se deja la entrada en cola sin gastar
+ * intentos y con un reintento lejano, para que el POS no martillee un endpoint que el
+ * ERP todavía no publica. El estado queda visible (error + panel de diagnóstico).
+ */
+const DEFERRED_RETRY_MS = 6 * 60 * 60 * 1000;
+
+export const markLoyaltyOperationDeferred = async (id: string, reason: string): Promise<void> => {
+    const queue = await readQueue();
+    const item = queue.find(entry => entry.id === id);
+    if (!item) return;
+
+    await upsert({
+        ...item,
+        status: 'PENDING',
+        lastAttemptAt: new Date().toISOString(),
+        nextAttemptAt: new Date(Date.now() + DEFERRED_RETRY_MS).toISOString(),
+        error: reason,
+    });
+};
+
 export interface ProcessOutboxResult {
     processed: number;
     synced: number;
     failed: number;
     skipped: number;
+    /** Entradas que no se enviaron porque la capacidad no está disponible. */
+    deferred: number;
 }
 
-type Sender = (item: LoyaltyOutboxItem) => Promise<{ ok: boolean; error?: string }>;
+/**
+ * Resultado del envío de una entrada.
+ *
+ * `unavailable` distingue "la función no está publicada / está apagada" (no gastar
+ * intentos, reintento lejano) de un fallo real de red o del ERP (backoff normal).
+ */
+export interface SendOutcome {
+    ok: boolean;
+    error?: string;
+    unavailable?: boolean;
+}
+
+type Sender = (item: LoyaltyOutboxItem) => Promise<SendOutcome>;
 
 let isProcessing = false;
 
@@ -174,7 +211,7 @@ let isProcessing = false;
  * reporte de venta. Un fallo no detiene la cola: se reprograma con backoff y se sigue.
  */
 export const processLoyaltyOutbox = async (send: Sender, now: Date = new Date()): Promise<ProcessOutboxResult> => {
-    const result: ProcessOutboxResult = { processed: 0, synced: 0, failed: 0, skipped: 0 };
+    const result: ProcessOutboxResult = { processed: 0, synced: 0, failed: 0, skipped: 0, deferred: 0 };
     if (isProcessing) return result;
     if (typeof navigator !== 'undefined' && navigator.onLine === false) return result;
 
@@ -195,6 +232,9 @@ export const processLoyaltyOutbox = async (send: Sender, now: Date = new Date())
                 if (outcome.ok) {
                     await markLoyaltyOperationSynced(item.id);
                     result.synced += 1;
+                } else if (outcome.unavailable) {
+                    await markLoyaltyOperationDeferred(item.id, outcome.error || 'Capacidad no disponible');
+                    result.deferred += 1;
                 } else {
                     await markLoyaltyOperationFailed(item.id, outcome.error || 'Error desconocido');
                     result.failed += 1;

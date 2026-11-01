@@ -13,6 +13,7 @@ import {
 import {
     calculateAge,
     enqueueEnrollment,
+    getLoyaltyChannelStatus,
     normalizeCedula,
     normalizePhone,
     validateEnrollInput,
@@ -43,9 +44,15 @@ type FormState = {
  * Los seis campos son obligatorios y los tres consentimientos arrancan **desmarcados**.
  * El alta se encola siempre: si hay red se envía de inmediato y si no, queda pendiente
  * en la cola local (que sobrevive al cierre de la app) y se reintenta al reconectar.
+ *
+ * Si el canal de lealtad del ERP no está disponible en esta caja (`/loyalty/enroll`
+ * todavía no publicado, o `ERP_SUPPORTS_LOYALTY_CHANNEL=false`), el modal se muestra
+ * degradado con el motivo y no permite enviar: el alta no es un requisito para vender.
  */
 const EgoClubEnrollModal: React.FC<EgoClubEnrollModalProps> = ({ config, onClose, onEnrolled }) => {
     const programEnabled = isEgoClubEnabled(config);
+    const channelStatus = useMemo(() => getLoyaltyChannelStatus('/loyalty/enroll'), []);
+    const enrollmentEnabled = programEnabled && channelStatus.enabled;
     const storeId = useMemo(() => getStoredErpSyncBinding().storeId || '', []);
 
     const [form, setForm] = useState<FormState>({
@@ -89,7 +96,7 @@ const EgoClubEnrollModal: React.FC<EgoClubEnrollModalProps> = ({ config, onClose
 
     const handleSubmit = async () => {
         setSubmitted(true);
-        if (!programEnabled || !validation.valid) return;
+        if (!enrollmentEnabled || !validation.valid) return;
 
         setSaving(true);
         try {
@@ -119,7 +126,7 @@ const EgoClubEnrollModal: React.FC<EgoClubEnrollModalProps> = ({ config, onClose
                 value={form[key]}
                 placeholder={options.placeholder}
                 maxLength={options.maxLength}
-                disabled={!programEnabled}
+                disabled={!enrollmentEnabled}
                 onChange={(event) => setForm(prev => ({ ...prev, [key]: event.target.value }))}
                 className={`mt-1 w-full rounded-xl border-2 px-3 py-2 text-sm font-bold text-gray-800 outline-none transition-colors disabled:bg-gray-100 ${
                     showError(key as keyof typeof validation.errors) ? 'border-red-300 bg-red-50' : 'border-gray-200 focus:border-blue-400'
@@ -140,7 +147,7 @@ const EgoClubEnrollModal: React.FC<EgoClubEnrollModalProps> = ({ config, onClose
     ) => (
         <button
             type="button"
-            disabled={!programEnabled}
+            disabled={!enrollmentEnabled}
             onClick={() => onChange(!checked)}
             className={`w-full text-left p-3 rounded-xl border-2 transition-all flex items-start gap-3 disabled:opacity-60 ${
                 checked ? 'bg-emerald-50 border-emerald-400' : 'bg-white border-gray-200 hover:border-gray-300'
@@ -183,6 +190,16 @@ const EgoClubEnrollModal: React.FC<EgoClubEnrollModalProps> = ({ config, onClose
                         </div>
                     )}
 
+                    {programEnabled && !channelStatus.enabled && (
+                        <div className="flex items-start gap-2 p-3 rounded-xl bg-amber-50 border border-amber-200 text-amber-800">
+                            <AlertCircle size={18} className="mt-0.5 shrink-0" />
+                            <p className="text-xs font-bold">
+                                {channelStatus.reason || 'Alta de socio no disponible en esta caja.'}
+                                {' '}La venta y la acumulación por el evento de venta siguen funcionando.
+                            </p>
+                        </div>
+                    )}
+
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                         {field('Nombre y apellido', 'nombre', { placeholder: 'Ana Pérez' })}
                         {field('Cédula', 'cedula', {
@@ -200,7 +217,7 @@ const EgoClubEnrollModal: React.FC<EgoClubEnrollModalProps> = ({ config, onClose
                             <span className="text-[11px] font-black uppercase tracking-wide text-gray-500">Tienda de registro</span>
                             <input
                                 value={form.registrationStoreId}
-                                disabled={!programEnabled}
+                                disabled={!enrollmentEnabled}
                                 onChange={(event) => setForm(prev => ({ ...prev, registrationStoreId: event.target.value }))}
                                 className={`mt-1 w-full rounded-xl border-2 px-3 py-2 text-sm font-bold text-gray-800 outline-none disabled:bg-gray-100 ${
                                     showError('registrationStoreId') ? 'border-red-300 bg-red-50' : 'border-gray-200 focus:border-blue-400'
@@ -244,7 +261,7 @@ const EgoClubEnrollModal: React.FC<EgoClubEnrollModalProps> = ({ config, onClose
                                         <button
                                             key={channel.type}
                                             type="button"
-                                            disabled={!programEnabled}
+                                            disabled={!enrollmentEnabled}
                                             onClick={() => setMarketingChannels(prev => (
                                                 selected ? prev.filter(c => c !== channel.type) : [...prev, channel.type]
                                             ))}
@@ -284,7 +301,7 @@ const EgoClubEnrollModal: React.FC<EgoClubEnrollModalProps> = ({ config, onClose
                     </button>
                     <button
                         onClick={handleSubmit}
-                        disabled={!programEnabled || saving}
+                        disabled={!enrollmentEnabled || saving}
                         className="px-5 py-2 rounded-xl text-sm font-black text-white bg-blue-600 hover:bg-blue-700 disabled:bg-gray-300 flex items-center gap-2"
                     >
                         {saving ? <Loader2 size={16} className="animate-spin" /> : <BadgeCheck size={16} />}

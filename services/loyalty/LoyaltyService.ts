@@ -1,6 +1,14 @@
 import { v5 as uuidv5 } from 'uuid';
 import { postErpSyncJson } from '../../utils/erpSyncLifecycle';
 import {
+    getLoyaltyChannelAvailability,
+    isErpLoyaltyChannelFlagEnabled,
+    markErpRouteAvailable,
+    markErpRouteUnavailable,
+} from '../../utils/erpDiagnostics';
+import { isRouteNotPublishedError, isTerminalBindingError } from '../../utils/erpSyncContract';
+import { isErpSyncRequestError } from '../../utils/erpSyncTransport';
+import {
     enqueueLoyaltyOperation,
     listLoyaltyOutbox,
     markLoyaltyOperationFailed,
@@ -8,6 +16,7 @@ import {
     processLoyaltyOutbox,
     type LoyaltyOutboxItem,
     type ProcessOutboxResult,
+    type SendOutcome,
 } from '../../utils/loyaltyOutbox';
 import type { LoyaltyMarketingChannel } from '../../constants/egoClubLegal';
 
@@ -24,9 +33,73 @@ export type { LoyaltyMarketingChannel };
  * `postErpSyncJson`). Los endpoints `/api/settings/crm/loyalty/*` exigen RBAC
  * (`x-role-id`) y no se usan desde el POS a propósito.
  *
- * ⚠️ Estos tres endpoints todavía deben existir en Alfa-RMS. Mientras no estén, las
- * llamadas fallan y las operaciones permanecen en la cola local reintentándose.
+ * ⚠️ `enroll`, `redeem` y `apply-sale-document` **todavía no están publicados** en
+ * Alfa-RMS (404 de ruta sync). Por eso todo el canal está detrás de la bandera
+ * `ERP_SUPPORTS_LOYALTY_CHANNEL` (default `false`):
+ *
+ * - `false`: no se llama ninguno de los tres; la UI degrada ("no disponible en esta
+ *   caja") y la lealtad se sigue acumulando por el evento de venta en `/inbox`, que es
+ *   donde el ERP la aplica.
+ * - `true`: llamadas normales. Un 404 de ruta o un 403 `LICENSE_EXCEEDED_INACTIVE` se
+ *   tratan como capacidad ausente (no como excepción): se degrada y se registra en el
+ *   diagnóstico.
  */
+
+/** Ruta base del canal de lealtad (para el estado de capacidad). */
+export const LOYALTY_CHANNEL_ROUTE = '/loyalty';
+
+/** Estado del canal de lealtad en esta caja (bandera + rutas publicadas). */
+export const getLoyaltyChannelStatus = (route: string = LOYALTY_CHANNEL_ROUTE): {
+    enabled: boolean;
+    reason: string | null;
+} => getLoyaltyChannelAvailability(route);
+
+/** `true` si el POS puede llamar al canal de lealtad del ERP. */
+export const isLoyaltyChannelAvailable = (route: string = LOYALTY_CHANNEL_ROUTE): boolean => (
+    getLoyaltyChannelAvailability(route).enabled
+);
+
+/** Motivo accionable cuando el canal no está disponible (para mostrar en la UI). */
+export const getLoyaltyChannelUnavailableMessage = (route: string = LOYALTY_CHANNEL_ROUTE): string => (
+    getLoyaltyChannelAvailability(route).reason
+    || 'No disponible en esta caja: el ERP no publica el canal de lealtad.'
+);
+
+/**
+ * Convierte un fallo del canal de lealtad en un estado manejado.
+ *
+ * Un 404 de ruta sync **no** es un error de negocio: se marca la ruta como no publicada
+ * (queda visible en el diagnóstico) y se degrada sin reintentar en bucle. Los estados
+ * terminales de vinculación tampoco se reintentan: exigen que el operador re-vincule.
+ */
+const classifyLoyaltyFailure = (
+    error: unknown,
+    path: string,
+): { error: string; unavailable: boolean } => {
+    if (isErpSyncRequestError(error)) {
+        const description = error.description;
+
+        if (isRouteNotPublishedError(description)) {
+            markErpRouteUnavailable(path, description.code);
+            return {
+                error: `No disponible en esta caja: el ERP todavía no publica ${path}.`,
+                unavailable: true,
+            };
+        }
+
+        if (isTerminalBindingError(description)) {
+            return {
+                error: `${description.title}: ${description.operatorMessage} Acción: ${description.action}`,
+                unavailable: true,
+            };
+        }
+
+        return { error: error.message || description.operatorMessage, unavailable: false };
+    }
+
+    return { error: String((error as any)?.message || 'Error de red'), unavailable: false };
+};
+
 
 /** Namespace propio para derivar claves estables (idempotencia del lado del POS). */
 const EGO_CLUB_NAMESPACE = 'd2c5f5b0-7d59-4b9a-9b2e-5f0a8e1c4c11';
@@ -176,9 +249,9 @@ export const buildEnrollPayload = (input: LoyaltyEnrollInput): Record<string, un
 /**
  * Encola el alta de socio y dispara un intento inmediato.
  *
- * Si no hay red, o el endpoint todavía no existe en el ERP, la operación queda en la
- * cola local con estado `PENDING` y se reintenta con backoff. La clave es la cédula
- * normalizada, así que dar de alta dos veces a la misma persona no genera dos envíos.
+ * El alta sólo se envía si el canal de lealtad está habilitado (bandera del ERP). Con la
+ * bandera apagada la entrada queda en cola y no se gasta ningún intento: la UI muestra
+ * "no disponible en esta caja" y no se llama a `/loyalty/enroll`.
  */
 export const enqueueEnrollment = async (input: LoyaltyEnrollInput): Promise<LoyaltyOutboxItem> => {
     const item = await enqueueLoyaltyOperation(
@@ -192,11 +265,19 @@ export const enqueueEnrollment = async (input: LoyaltyEnrollInput): Promise<Loya
 };
 
 /** Envía una entrada de la cola al ERP. Devuelve `ok: false` para reintentar después. */
-export const sendLoyaltyOutboxItem = async (item: LoyaltyOutboxItem): Promise<{ ok: boolean; error?: string }> => {
+export const sendLoyaltyOutboxItem = async (item: LoyaltyOutboxItem): Promise<SendOutcome> => {
+    const path = item.type === 'ENROLL' ? '/loyalty/enroll' : '/loyalty/apply-sale-document';
+
+    if (!isErpLoyaltyChannelFlagEnabled()) {
+        // Capacidad apagada: no se llama al ERP y no se gastan intentos.
+        return { ok: false, unavailable: true, error: getLoyaltyChannelUnavailableMessage(path) };
+    }
+
     try {
         if (item.type === 'ENROLL') {
             const response = await postErpSyncJson<Record<string, unknown>>('/loyalty/enroll', item.payload);
             if (response === null) return { ok: false, error: 'Canal de sincronización del ERP no configurado' };
+            markErpRouteAvailable('/loyalty/enroll');
             return { ok: true };
         }
 
@@ -207,12 +288,14 @@ export const sendLoyaltyOutboxItem = async (item: LoyaltyOutboxItem): Promise<{ 
                 document_id: documentId,
             });
             if (response === null) return { ok: false, error: 'Canal de sincronización del ERP no configurado' };
+            markErpRouteAvailable('/loyalty/apply-sale-document');
             return { ok: true };
         }
 
         return { ok: false, error: `Tipo de operación no soportada: ${item.type}` };
     } catch (error: any) {
-        return { ok: false, error: error?.message || 'Error de red' };
+        const classified = classifyLoyaltyFailure(error, path);
+        return { ok: false, error: classified.error, unavailable: classified.unavailable };
     }
 };
 
@@ -226,8 +309,11 @@ export const flushLoyaltyOutbox = async (): Promise<ProcessOutboxResult> => (
  *
  * - Se encola **una vez por documento** (clave estable derivada del id local del
  *   documento), fuera del flujo de impresión: la venta nunca espera a la red.
- * - El ERP es idempotente por `document_id`, así que reintentar es seguro; aun así la
- *   clave evita encolar dos veces el mismo documento desde el POS.
+ * - Con `ERP_SUPPORTS_LOYALTY_CHANNEL=false` (default) **no** se llama ni se encola:
+ *   el ERP aplica la lealtad desde el evento de venta en `/inbox`, así que reportar el
+ *   documento sería duplicar el devengo (y además la ruta no está publicada).
+ * - El ERP es idempotente por `document_id`; aun así la clave evita encolar dos veces el
+ *   mismo documento desde el POS.
  * - El POS **no** calcula los puntos devengados: el ERP aplica la base elegible (sin
  *   ITBIS, sin ofertas, sin tarjeta de regalo ni wallet) y la tasa del nivel.
  */
@@ -237,6 +323,11 @@ export const enqueueSaleDocumentReport = async (params: {
 }): Promise<LoyaltyOutboxItem | null> => {
     const documentId = String(params.documentId || '').trim();
     if (!documentId) return null;
+
+    if (!isErpLoyaltyChannelFlagEnabled()) {
+        // Sin canal de lealtad el devengo lo aplica el ERP desde el evento de venta.
+        return null;
+    }
 
     const item = await enqueueLoyaltyOperation(
         'SALE_DOCUMENT',
@@ -303,6 +394,8 @@ export interface RedeemResult {
     /** Saldo autoritativo devuelto por el ERP. */
     balance?: number;
     error?: string;
+    /** `true` cuando la capacidad no está disponible en esta caja (no es error de red). */
+    unavailable?: boolean;
 }
 
 /**
@@ -312,6 +405,10 @@ export interface RedeemResult {
  * aceptable. Si el ERP falla o no responde, el POS **no** aplica el descuento y avisa al
  * cajero. El saldo que se muestra después es el del snapshot del ERP, nunca uno calculado
  * localmente.
+ *
+ * Con `ERP_SUPPORTS_LOYALTY_CHANNEL=false` (default) la función ni siquiera llama al
+ * ERP: devuelve un estado "no disponible en esta caja" que la UI muestra sin bloquear la
+ * venta. Un 404 de ruta sync se trata igual (capacidad ausente, no excepción).
  */
 export const redeemPoints = async (params: {
     customerId: string;
@@ -321,6 +418,14 @@ export const redeemPoints = async (params: {
     const points = Math.floor(Number(params.points));
     if (!params.customerId) return { ok: false, error: 'Falta el cliente para canjear' };
     if (!Number.isFinite(points) || points <= 0) return { ok: false, error: 'Cantidad de puntos inválida' };
+
+    if (!isErpLoyaltyChannelFlagEnabled()) {
+        return {
+            ok: false,
+            unavailable: true,
+            error: getLoyaltyChannelUnavailableMessage('/loyalty/redeem'),
+        };
+    }
 
     try {
         const response = await postErpSyncJson<Record<string, any>>('/loyalty/redeem', {
@@ -333,6 +438,8 @@ export const redeemPoints = async (params: {
             return { ok: false, error: 'Canal de sincronización del ERP no configurado' };
         }
 
+        markErpRouteAvailable('/loyalty/redeem');
+
         const status = String(response.status || '').toLowerCase();
         if (status && status !== 'success') {
             return { ok: false, error: String(response.message || response.error || 'El ERP rechazó el canje') };
@@ -344,6 +451,7 @@ export const redeemPoints = async (params: {
             balance: extractPointsBalance(response.snapshot),
         };
     } catch (error: any) {
-        return { ok: false, error: error?.message || 'Error de red al canjear' };
+        const classified = classifyLoyaltyFailure(error, '/loyalty/redeem');
+        return { ok: false, error: classified.error, unavailable: classified.unavailable };
     }
 };
