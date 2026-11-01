@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { DEFAULT_PUBLIC_ERP_BASE_URL } from '../utils/erpBaseUrl';
 import { Capacitor } from '@capacitor/core';
 import {
   AlertTriangle,
@@ -653,8 +654,6 @@ const buildTerminalSyncProfile = (params: {
     erpReadyForSales: Boolean(erpReadyForSales),
   };
 };
-
-const DEFAULT_PUBLIC_ERP_BASE_URL = 'https://clic-erp.clicsuite.com';
 
 const resolveErpBaseUrl = (): string | null => {
   const current = new URL(window.location.origin);

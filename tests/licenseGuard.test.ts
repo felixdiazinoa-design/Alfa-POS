@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
+import { DEFAULT_PUBLIC_ERP_BASE_URL } from '../utils/erpBaseUrl';
 
 class MemoryStorage {
   private values = new Map<string, string>();
@@ -115,7 +116,7 @@ test('tras borrar el almacenamiento valida contra el ERP público sin configurac
   const request = new URL(requestedUrl);
 
   assert.equal(result.isValid, true);
-  assert.equal(request.origin, 'https://clic-erp.clicsuite.com');
+  assert.equal(request.origin, DEFAULT_PUBLIC_ERP_BASE_URL);
   assert.equal(request.pathname, '/api/license/status');
   assert.equal(request.searchParams.get('tenantId'), tenantId);
   assert.equal(request.searchParams.get('deviceId'), deviceId);

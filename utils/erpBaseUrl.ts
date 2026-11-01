@@ -1,6 +1,17 @@
 import { Capacitor } from '@capacitor/core';
 
-export const DEFAULT_PUBLIC_ERP_BASE_URL = 'https://clic-erp.clicsuite.com';
+/**
+ * Base canónica del ERP para esta caja: **Alfa-RMS** (fuente de verdad de clientes,
+ * promociones y lealtad). El host heredado (clic-ERP) se retira; se conserva sólo como
+ * referencia para el diagnóstico y las pruebas de guardia, nunca como valor por defecto.
+ */
+export const DEFAULT_PUBLIC_ERP_BASE_URL = 'https://alfa-rms.vercel.app';
+
+/** Host heredado, sólo referencia (diagnóstico + guardia de código). */
+export const LEGACY_PUBLIC_ERP_BASE_URL = 'https://clic-erp.clicsuite.com';
+
+/** projectRef del proyecto Supabase de Alfa-RMS, publicado por `GET /health`. */
+export const EXPECTED_ERP_SUPABASE_PROJECT_REF = 'tcbleyxjwpopoierbkzo';
 
 export const isNativeAndroidRuntime = (): boolean => {
     try {
