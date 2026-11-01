@@ -482,7 +482,7 @@ export const db = {
           console.log('✅ Products cleared');
           break;
 
-        case 'tariffs':
+        case 'tariffs': {
           const config = await dbAdapter.getCollection('config') as any as BusinessConfig;
           if (config) {
             config.tariffs = [];
@@ -490,6 +490,7 @@ export const db = {
           }
           console.log('✅ Tariffs cleared');
           break;
+        }
 
         case 'suppliers':
           await dbAdapter.saveCollection('suppliers', []);
@@ -501,7 +502,7 @@ export const db = {
           console.log('✅ Customers cleared');
           break;
 
-        case 'stock':
+        case 'stock': {
           // Clear stock balances from all products
           const products = await dbAdapter.getCollection('products') || [];
           const updatedProducts = products.map((p: any) => ({
@@ -513,6 +514,7 @@ export const db = {
           await dbAdapter.saveCollection('products', updatedProducts);
           console.log('✅ Stock cleared');
           break;
+        }
 
         case 'transactions':
           if (isSlave && terminalId) {
@@ -526,20 +528,21 @@ export const db = {
           }
           break;
 
-        case 'credit_notes':
+        case 'credit_notes': {
           // Filter out refunded transactions
           const txns = await dbAdapter.getCollection('transactions') || [];
           const filtered = txns.filter((t: any) => !t.refunded);
           await dbAdapter.saveCollection('transactions', filtered);
           console.log('✅ Credit notes cleared');
           break;
+        }
 
         case 'purchase_orders':
           await dbAdapter.saveCollection('purchaseOrders', []);
           console.log('✅ Purchase orders cleared');
           break;
 
-        case 'purchase_reception':
+        case 'purchase_reception': {
           // 1. Mark all POs as pending
           const pos = await dbAdapter.getCollection('purchaseOrders') || [];
           const resetPos = pos.map((o: any) => ({
@@ -561,6 +564,7 @@ export const db = {
           }
           console.log('✅ Purchase receptions and history cleared');
           break;
+        }
 
         case 'inventory_ledger':
           if (isSlave && terminalId) {

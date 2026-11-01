@@ -224,7 +224,7 @@ const RecipeManager: React.FC<RecipeManagerProps> = ({ product, allProducts, onU
 
                                     // Calculate for display
                                     const convertedCost = calculateCost(detail.quantity, detail.unit, baseCost, purchaseUnit);
-                                    let waste = detail.wasteFactor || 0;
+                                    const waste = detail.wasteFactor || 0;
                                     const realCost = convertedCost / (1 - waste);
 
                                     const compatibleUnits = getCompatibleUnits(purchaseUnit);

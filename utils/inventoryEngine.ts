@@ -320,7 +320,7 @@ export async function calculateOptimalInventoryLevels(
     // 5. Get Lead Time (In a real system, this could be wh-specific as requested)
     // For now using supplier lead time.
     const primarySupplier = allSuppliers.find(s => s.id === product.primarySupplierId);
-    let leadTimeDays = primarySupplier?.leadTimeDays || 7;
+    const leadTimeDays = primarySupplier?.leadTimeDays || 7;
 
     // Logistic Insight: Locations further away from CD could have extra lead time
     // if (!targetWarehouse?.isMain) leadTimeDays += 1; // Example logic

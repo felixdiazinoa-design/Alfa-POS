@@ -398,7 +398,7 @@ export const getInventorySnapshotAtDate = (
     products.forEach(product => {
         // Current total stock from product metadata (sum of all warehouses)
         const balances = product.stockBalances || {};
-        let currentStock = Object.values(balances).reduce((acc: number, qty: number) => acc + (qty || 0), 0);
+        const currentStock = Object.values(balances).reduce((acc: number, qty: number) => acc + (qty || 0), 0);
 
         // Sort ledger entries for this product descending (newest first)
         const movements = (ledger || [])

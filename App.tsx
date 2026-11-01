@@ -1491,7 +1491,7 @@ const AppContent: React.FC = () => {
             try {
               console.log('📦 Loading active transactions for session...');
               console.log('📦 Loading active transactions for session...');
-              let activeTxns = await db.get('transactions') as Transaction[];
+              const activeTxns = await db.get('transactions') as Transaction[];
 
               // --- SELF-HEAL: Commented out to prevent regression ---
               /*
@@ -1861,13 +1861,14 @@ const AppContent: React.FC = () => {
         case 'transactions': setTransactions(Array.isArray(freshData) ? freshData as Transaction[] : []); break;
         case 'cashMovements': setCashMovements(freshData as CashMovement[]); break;
         case 'zReports': setZReports(freshData as ZReport[]); break;
-        case 'productStocks':
+        case 'productStocks': {
           setProductStocks(freshData as ProductStock[]);
           // CRITICAL: When detailed stocks change, we should also refresh products 
           // because they contain the aggregated stockBalances
           const freshProducts = await db.get('products') as Product[];
           setProducts(freshProducts);
           break;
+        }
       }
     };
 
@@ -2988,7 +2989,7 @@ const AppContent: React.FC = () => {
 
       // 4. Create and Save Z-Report
       let sequenceNumber = '';
-      let zReportId = `ZR-${Date.now()}`;
+      const zReportId = `ZR-${Date.now()}`;
 
       // DOCUMENT SERIES LOGIC
       // Attempt to find an assigned series for Z_REPORT
@@ -4198,7 +4199,7 @@ const AppContent: React.FC = () => {
               }
 
               // Reverse Stock
-              let updatedProducts = [...products];
+              const updatedProducts = [...products];
               for (const item of reception.items) {
                 const productIndex = updatedProducts.findIndex(p => p.id === item.productId);
                 if (productIndex >= 0) {

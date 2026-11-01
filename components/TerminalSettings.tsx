@@ -222,7 +222,7 @@ const TerminalSettings: React.FC<TerminalSettingsProps> = ({ config, onUpdateCon
       // 1. Find the master series object
       const startSeries = masterSequences.find(s => s.id === sequenceId);
 
-      let newDocumentSeries = [...(activeTerminal.config.documentSeries || [])];
+      const newDocumentSeries = [...(activeTerminal.config.documentSeries || [])];
 
       if (sequenceId && startSeries) {
          // Check if this specific series is already in the terminal config

@@ -33,7 +33,7 @@ const ActionFooter: React.FC<ActionFooterProps> = ({
     ) => {
         let baseColors = "";
         let borderColors = "";
-        let textColors = "text-slate-700";
+        const textColors = "text-slate-700";
 
         switch (group) {
             case 'transactional':

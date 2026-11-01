@@ -636,7 +636,7 @@ router.post('/collections/:collection/push', async (req, res) => {
 
                         for (const item of items) {
                             const values = colNames.map(col => {
-                                let val = item[col];
+                                const val = item[col];
                                 if (fieldsToStringify.includes(col)) {
                                     return typeof val === 'object' ? JSON.stringify(val) : (val || '[]');
                                 }
