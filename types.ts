@@ -938,7 +938,7 @@ export interface CurrencyRateSchedule {
   error?: string;
 }
 
-export type PaymentMethod = 'CASH' | 'CARD' | 'QR' | 'WALLET' | 'ADVANCE' | 'OTHER' | 'CREDIT' | 'STORE_CREDIT' | 'UBER_EATS';
+export type PaymentMethod = 'CASH' | 'CARD' | 'QR' | 'WALLET' | 'ADVANCE' | 'OTHER' | 'CREDIT' | 'STORE_CREDIT' | 'UBER_EATS' | 'LOYALTY';
 export type PaymentIntegrationProvider =
   | 'AZUL'
   | 'INGENICO_AZUL_WEBAPI'
@@ -1225,6 +1225,22 @@ export interface LoyaltyConfig {
   expirationMonths: number;
   excludedCategories: string[];
   tiers?: LoyaltyTier[];
+}
+
+/** Canje de puntos aplicado a un ticket. El saldo siempre lo dicta el ERP. */
+export interface LoyaltyRedemption {
+  /** Clave idempotente del canje en el POS. */
+  id: string;
+  customerId: string;
+  points: number;
+  /** Valor monetario cubierto por el canje (points × redeemRate). */
+  value: number;
+  redeemRate: number;
+  reason: string;
+  /** Saldo resultante según el snapshot devuelto por el ERP. */
+  balanceAfter?: number;
+  redeemedAt: string;
+  terminalId?: string;
 }
 
 
@@ -1894,6 +1910,12 @@ export interface Transaction {
   reservationCode?: string;
   priorAdvancePaid?: number;
   balanceDueAtSale?: number;
+
+  /**
+   * Canje de puntos EGO Club aplicado al ticket.
+   * El saldo es el que devolvió el ERP; el POS no lo calcula ni lo descuenta por su cuenta.
+   */
+  loyaltyRedemption?: LoyaltyRedemption;
 
   // Accounts Receivable (CxC)
   dueDate?: string;         // ISO Date
