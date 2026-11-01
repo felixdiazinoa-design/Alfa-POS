@@ -2414,7 +2414,7 @@ const POSInterface: React.FC<POSInterfaceProps> = ({
                                  )}
 
                                  {/* PROMO BADGE */}
-                                 {hasProductPromotion(product, config, activeTerminalId) && (
+                                 {hasProductPromotion(product, config, activeTerminalId, selectedCustomer || undefined) && (
                                     <div
                                        className="absolute top-0 right-0 cursor-pointer z-20"
                                        onClick={(e) => {
@@ -2433,7 +2433,7 @@ const POSInterface: React.FC<POSInterfaceProps> = ({
                            )}
 
                            {/* FALLBACK BADGES (NO IMAGE MODE) */}
-                           {!uxConfig.showProductImages && hasProductPromotion(product, config, activeTerminalId) && (
+                           {!uxConfig.showProductImages && hasProductPromotion(product, config, activeTerminalId, selectedCustomer || undefined) && (
                               <div
                                  className="absolute top-0 right-0 cursor-pointer z-20"
                                  onClick={(e) => {
