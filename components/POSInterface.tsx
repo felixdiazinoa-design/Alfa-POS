@@ -3626,8 +3626,8 @@ const POSInterface: React.FC<POSInterfaceProps> = ({
    }, []);
 
    const hasPromotionForProduct = useCallback(
-      (product: Product) => hasProductPromotion(product, config, activeTerminalId),
-      [config, activeTerminalId]
+      (product: Product) => hasProductPromotion(product, config, activeTerminalId, selectedCustomer || undefined),
+      [config, activeTerminalId, selectedCustomer]
    );
 
    const openProductPromotionSheet = useCallback((product: Product) => {
