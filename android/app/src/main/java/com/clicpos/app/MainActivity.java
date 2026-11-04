@@ -28,6 +28,7 @@ import android.webkit.WebView;
 import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
 
+import com.clicpos.cardnet.CardNetEcrPlugin;
 import com.clicpos.customerdisplay.AndroidCustomerDisplayBridge;
 import com.clicpos.nativeprinter.AndroidPrinterBridge;
 import com.getcapacitor.BridgeActivity;
@@ -53,6 +54,8 @@ public class MainActivity extends BridgeActivity {
                 + " savedState=" + (savedInstanceState != null)
                 + " launchedFromHistory=" + launchedFromHistory);
         if (BuildConfig.POS_DIAGNOSTICS) registerPlugin(PosDiagnosticSink.class);
+        // Transporte TCP del canal ECR de CardNET (terminal Ethernet en el puerto 7060).
+        registerPlugin(CardNetEcrPlugin.class);
         super.onCreate(savedInstanceState);
         enforcePosWindowPolicy();
 

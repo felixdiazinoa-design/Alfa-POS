@@ -955,7 +955,8 @@ export type PaymentIntegrationAuditAction =
   | 'GET_LAST_TRX'
   | 'PINPAD_INIT'
   | 'PINPAD_TRANSACTION_TOTALS'
-  | 'PINPAD_SETTLE';
+  | 'PINPAD_SETTLE'
+  | 'TIP_ADJUST';
 export type PaymentIntegrationAuditStatus = 'SUCCESS' | 'FAILED';
 
 export interface PaymentIntegrationAuditEvent {
@@ -2433,6 +2434,10 @@ export interface PaymentEntry {
   gatewayMaskedPan?: string;
   gatewayCardBrand?: string;
   gatewayEntryMode?: string;
+  /** HOST CardNET de la transacción (06=Crédito, 07=Débito, 08=AMEX, 09=Privada, 10=Peaje, 11=tPago, 12=Otro). */
+  gatewayHost?: string;
+  /** Tipo de producto CardNET (VC, MC, MD, AC, DC, OT...). */
+  gatewayCardProduct?: string;
   gatewayReceiptMerchant?: string;
   gatewayReceiptClient?: string;
   gatewaySignatureData?: string;

@@ -338,6 +338,10 @@ import {
 import { getFiscalDocumentStatus, issueFiscalDocument } from './services/fiscal/fiscalService';
 import { azulMcmService } from './services/payments/AzulMcmService';
 import { ingenicoAzulWebApiService } from './services/payments/IngenicoAzulWebApiService';
+import {
+  cardNetEcrService,
+  generateCardNetInvoiceTicket,
+} from './services/payments/CardNetEcrService';
 import { couponService } from './utils/couponService';
 
 type ReceivableRepairSummary = {
@@ -12604,9 +12608,15 @@ const AppContent: React.FC = () => {
                       ? await ingenicoAzulWebApiService.sale(assignedIntegration, {
                         amount: total,
                       })
-                      : (() => {
-                        throw new Error(`La integración ${assignedIntegration.provider} todavía no está soportada en self checkout.`);
-                      })();
+                      : assignedIntegration.provider === 'CARDNET'
+                        ? await cardNetEcrService.sale(assignedIntegration, {
+                          amount: total,
+                          itbis: tax,
+                          invoiceTicket: generateCardNetInvoiceTicket(),
+                        })
+                        : (() => {
+                          throw new Error(`La integración ${assignedIntegration.provider} todavía no está soportada en self checkout.`);
+                        })();
                   const gatewayReference = 'referenceNumber' in gatewayResult
                     ? gatewayResult.referenceNumber
                     : ('transactionReference' in gatewayResult ? gatewayResult.transactionReference : undefined);
@@ -12620,7 +12630,7 @@ const AppContent: React.FC = () => {
                     gatewayResponseMessage: gatewayResult.responseMessage,
                     gatewayOrderNumber: 'orderNumber' in gatewayResult ? (gatewayResult.orderNumber || gatewayOrderNumber) : gatewayOrderNumber,
                     gatewayProcessedAmount: total,
-                    gatewayProcessedTaxAmount: assignedIntegration.provider === 'AZUL' ? tax : 0,
+                    gatewayProcessedTaxAmount: assignedIntegration.provider === 'AZUL' || assignedIntegration.provider === 'CARDNET' ? tax : 0,
                     gatewayAuthorizationCode: gatewayResult.authorizationCode,
                     gatewayReference,
                     gatewaySequenceNumber: 'sequenceNumber' in gatewayResult ? gatewayResult.sequenceNumber : undefined,
@@ -12631,6 +12641,12 @@ const AppContent: React.FC = () => {
                     gatewayMaskedPan: gatewayResult.maskedPan,
                     gatewayCardBrand: gatewayResult.cardBrand,
                     gatewayEntryMode: gatewayResult.entryMode,
+                    gatewayHost: assignedIntegration.provider === 'CARDNET' && 'host' in gatewayResult
+                      ? gatewayResult.host
+                      : undefined,
+                    gatewayCardProduct: assignedIntegration.provider === 'CARDNET' && 'productType' in gatewayResult
+                      ? String(gatewayResult.productType || '')
+                      : undefined,
                     gatewayReceiptMerchant: gatewayResult.receiptMerchant,
                     gatewayReceiptClient: gatewayResult.receiptClient,
                     gatewaySignatureData: 'signatureData' in gatewayResult ? gatewayResult.signatureData : undefined,

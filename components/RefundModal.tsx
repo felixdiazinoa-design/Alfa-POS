@@ -3,7 +3,7 @@ import { X, RotateCcw, AlertTriangle, Check, Archive, Trash2, ListChecks } from 
 import { Transaction, CartItem } from '../types';
 import { getRefundItemKey, hasRefundableItems } from '../utils/refundAvailability';
 
-type RefundModalMode = 'STANDARD' | 'AZUL_GATEWAY_REFUND';
+type RefundModalMode = 'STANDARD' | 'AZUL_GATEWAY_REFUND' | 'CARDNET_GATEWAY_REFUND';
 
 interface RefundModalProps {
     isOpen: boolean;
@@ -17,6 +17,7 @@ interface RefundModalProps {
     ) => void;
     currencySymbol: string;
     mode?: RefundModalMode;
+    providerLabel?: string;
     remainingQuantities?: Map<string, number>;
 }
 
@@ -27,6 +28,7 @@ export const RefundModal: React.FC<RefundModalProps> = ({
     onConfirm,
     currencySymbol,
     mode = 'STANDARD',
+    providerLabel,
     remainingQuantities
 }) => {
     const [refundQuantities, setRefundQuantities] = useState<Map<string, number>>(new Map());
@@ -36,7 +38,7 @@ export const RefundModal: React.FC<RefundModalProps> = ({
     useEffect(() => {
         if (isOpen && transaction) {
             const initialQuantities = new Map<string, number>();
-            if (mode === 'AZUL_GATEWAY_REFUND') {
+            if (mode !== 'STANDARD') {
                 transaction.items.forEach(item => {
                     initialQuantities.set(item.cartId, Math.min(
                         item.quantity,
@@ -58,7 +60,9 @@ export const RefundModal: React.FC<RefundModalProps> = ({
 
     if (!isOpen || !transaction) return null;
 
-    const isGatewayRefundMode = mode === 'AZUL_GATEWAY_REFUND';
+    const isGatewayRefundMode = mode !== 'STANDARD';
+    const gatewayProviderLabel = providerLabel
+        || (mode === 'CARDNET_GATEWAY_REFUND' ? 'CardNET' : 'AZUL');
     const getMaxRefundQuantity = (item: CartItem) =>
         Math.max(0, Math.min(
             Math.abs(Number(item.quantity || 0)),
@@ -135,7 +139,7 @@ export const RefundModal: React.FC<RefundModalProps> = ({
                             <RotateCcw size={24} />
                         </div>
                         <div>
-                            <h2 className="text-lg font-black text-gray-900">{isGatewayRefundMode ? 'Procesar Refund AZUL' : 'Procesar Devolución'}</h2>
+                            <h2 className="text-lg font-black text-gray-900">{isGatewayRefundMode ? `Procesar Refund ${gatewayProviderLabel}` : 'Procesar Devolución'}</h2>
                             <p className="text-xs text-gray-500 font-medium">Ticket #{transaction.displayId || transaction.id}</p>
                             {transaction.erpRefundSource && (
                                 <p className="mt-1 text-[10px] font-black uppercase tracking-wider text-blue-600">Factura consultada en ERP</p>
@@ -153,10 +157,10 @@ export const RefundModal: React.FC<RefundModalProps> = ({
                     <div className="mb-6 flex gap-4 p-4 bg-blue-50/50 border border-blue-100 rounded-xl items-start">
                         <AlertTriangle className="text-blue-500 shrink-0 mt-0.5" size={18} />
                         <div className="text-sm text-blue-800">
-                            <p className="font-bold mb-1">{isGatewayRefundMode ? 'Refund AZUL + Nota de Crédito Fiscal (B04)' : 'Nota de Crédito Fiscal (B04)'}</p>
+                            <p className="font-bold mb-1">{isGatewayRefundMode ? `Refund ${gatewayProviderLabel} + Nota de Crédito Fiscal (B04)` : 'Nota de Crédito Fiscal (B04)'}</p>
                             <p className="opacity-80">
                                 {isGatewayRefundMode
-                                    ? 'Este flujo ejecutará el refund total en AZUL y luego generará la nota de crédito vinculada a este comprobante.'
+                                    ? `Este flujo ejecutará el refund total en ${gatewayProviderLabel} y luego generará la nota de crédito vinculada a este comprobante.`
                                     : 'Se generará automáticamente una nota de crédito fiscal vinculada a este comprobante. Asegúrese de seleccionar el estado correcto del inventario.'}
                             </p>
                         </div>
@@ -296,7 +300,7 @@ export const RefundModal: React.FC<RefundModalProps> = ({
                         </p>
                         {isFullRefund && refundQuantities.size > 0 && (
                             <span className="text-[10px] font-bold bg-red-100 text-red-600 px-2 py-0.5 rounded-md">
-                                {isGatewayRefundMode ? 'REFUND TOTAL AZUL' : 'ANULACIÓN TOTAL'}
+                                {isGatewayRefundMode ? `REFUND TOTAL ${gatewayProviderLabel.toUpperCase()}` : 'ANULACIÓN TOTAL'}
                             </span>
                         )}
                     </div>
@@ -318,7 +322,7 @@ export const RefundModal: React.FC<RefundModalProps> = ({
                                     : 'bg-red-600 hover:bg-red-700 active:scale-[0.98] shadow-red-500/30'}
                `}
                         >
-                            <Check size={18} /> {isGatewayRefundMode ? 'Confirmar Refund AZUL' : 'Confirmar Devolución'}
+                            <Check size={18} /> {isGatewayRefundMode ? `Confirmar Refund ${gatewayProviderLabel}` : 'Confirmar Devolución'}
                         </button>
                     </div>
                 </div>
