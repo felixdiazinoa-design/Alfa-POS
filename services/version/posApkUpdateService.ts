@@ -53,8 +53,9 @@ type CheckOptions = {
 // `VITE_ALFA_ADMIN_BASE_URL` (o metadata.alfaAdminBaseUrl) tiene prioridad sobre el
 // host heredado de CLIC Cloud-Admin, para que un APK compilado contra ALFA-Admin
 // nunca pida actualizaciones a cloud-admin.clicsuite.com.
+// El host legado de CLIC Cloud-Admin (gamma) se retiró del binario: los releases
+// se publican en ALFA-Admin y no debe quedar ninguna URL de ese panel en el APK.
 const CANONICAL_CLOUD_ADMIN_BASE_URL = 'https://cloud-admin.clicsuite.com';
-const LEGACY_CLOUD_ADMIN_BASE_URL = 'https://cloud-admin-gamma.vercel.app';
 const DEFAULT_POS_APK_LATEST_URL = `${CANONICAL_CLOUD_ADMIN_BASE_URL}/api/pos-apk/latest`;
 const DEFAULT_POS_APK_PORTAL_URL = `${CANONICAL_CLOUD_ADMIN_BASE_URL}/apk-pos`;
 const POS_APK_LATEST_URL_STORAGE_KEY = 'clic_pos_apk_latest_url';
@@ -96,15 +97,7 @@ const getLocalStorageValue = (key: string): string => {
   }
 };
 
-const normalizeCloudAdminUrl = (value: unknown): string => {
-  const normalized = normalizeString(value).replace(/\/$/, '');
-  if (!normalized) return '';
-  if (normalized === LEGACY_CLOUD_ADMIN_BASE_URL) return CANONICAL_CLOUD_ADMIN_BASE_URL;
-  if (normalized.startsWith(`${LEGACY_CLOUD_ADMIN_BASE_URL}/`)) {
-    return `${CANONICAL_CLOUD_ADMIN_BASE_URL}${normalized.slice(LEGACY_CLOUD_ADMIN_BASE_URL.length)}`;
-  }
-  return normalized;
-};
+const normalizeCloudAdminUrl = (value: unknown): string => normalizeString(value).replace(/\/$/, '');
 
 const resolveCloudAdminBaseUrl = (config?: BusinessConfig | null): string => {
   const env = getEnv();

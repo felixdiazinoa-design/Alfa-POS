@@ -674,14 +674,16 @@ const ActivationScreen: React.FC<ActivationScreenProps> = ({ onActivationComplet
                 </div>
 
                 <div className="mt-8 text-center space-y-4">
-                    <a
-                        href={(import.meta as any).env.VITE_CLOUD_ADMIN_URL || 'https://cloud-admin-gamma.vercel.app/'}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-blue-400/60 hover:text-blue-400 text-[11px] font-medium transition-colors border-b border-transparent hover:border-blue-400/30 pb-0.5 inline-block"
-                    >
-                        ¿Prefiere hacerlo desde Cloud Admin? Abrir panel web
-                    </a>
+                    {getCloudAdminUrl() ? (
+                        <a
+                            href={getCloudAdminUrl()}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-blue-400/60 hover:text-blue-400 text-[11px] font-medium transition-colors border-b border-transparent hover:border-blue-400/30 pb-0.5 inline-block"
+                        >
+                            ¿Prefiere hacerlo desde el panel de administración? Abrir panel web
+                        </a>
+                    ) : null}
                     <p className="text-slate-600 text-[10px] uppercase font-bold tracking-[0.2em] pt-2">CLIC POS • CLOUD EDITION</p>
                 </div>
             </div>
