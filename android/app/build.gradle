@@ -120,3 +120,70 @@ try {
 } catch(Exception e) {
     logger.info("google-services.json not found, google-services plugin not applied. Push Notifications won't work")
 }
+
+// --- Entregables APK dentro del repositorio ---
+// Cada compilación copia su APK a <repo>/release, así el instalable queda dentro
+// de la carpeta del proyecto y no solo en android/app/build (que Gradle limpia).
+// El nombre del APK ya lo define el bloque applicationVariants de arriba:
+// Clic-Pos-<versionName>-<buildType>.apk
+def apkDeliverablesDir = rootProject.file('../release')
+
+tasks.register('collectApks') {
+    group = 'distribution'
+    description = 'Copia los APK compilados a <repo>/release junto con su checksum SHA-256.'
+
+    doLast {
+        def failedTask = gradle.taskGraph.allTasks.find { it.state.failure != null }
+        if (failedTask != null) {
+            logger.lifecycle("[release] La compilación falló en ${failedTask.path}; no se copian APK.")
+            return
+        }
+
+        def outputRoot = layout.buildDirectory.dir('outputs/apk').get().asFile
+        if (!outputRoot.exists()) {
+            logger.lifecycle('[release] Todavía no hay APK compilados en app/build/outputs/apk.')
+            return
+        }
+
+        apkDeliverablesDir.mkdirs()
+
+        // Sin key.properties el APK release sale sin firmar: se marca para que no
+        // se confunda con el entregable firmado de scripts/release-android.sh.
+        def hasSigningMaterial = rootProject.file('key.properties').exists()
+
+        def copied = []
+        outputRoot.eachFileRecurse { apk ->
+            if (!apk.isFile() || !apk.name.endsWith('.apk')) {
+                return
+            }
+
+            def deliverableName = apk.name
+            if (!hasSigningMaterial && deliverableName.contains('-release')) {
+                deliverableName = deliverableName.replace('-release.apk', '-release-unsigned.apk')
+                logger.lifecycle('[release] Aviso: no hay android/key.properties; el APK release va sin firmar.')
+            }
+
+            def bytes = apk.bytes
+            def target = new File(apkDeliverablesDir, deliverableName)
+            target.bytes = bytes
+
+            def digest = java.security.MessageDigest.getInstance('SHA-256')
+            digest.update(bytes)
+            new File(apkDeliverablesDir, "${deliverableName}.sha256").text =
+                "${digest.digest().encodeHex().toString()}  ${deliverableName}\n"
+
+            copied << deliverableName
+            logger.lifecycle("[release] ${deliverableName} -> ${target}")
+        }
+
+        if (copied.isEmpty()) {
+            logger.lifecycle('[release] No se encontraron APK para copiar.')
+        } else {
+            logger.lifecycle("[release] ${copied.size()} APK disponible(s) en ${apkDeliverablesDir}")
+        }
+    }
+}
+
+tasks.matching { it.name == 'assembleDebug' || it.name == 'assembleRelease' }.configureEach {
+    finalizedBy('collectApks')
+}

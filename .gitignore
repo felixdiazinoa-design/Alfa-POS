@@ -28,6 +28,10 @@ dist-ssr
 *.sqlite*
 *.tsbuildinfo
 
+# Entregables APK generados por gradlew / scripts/release-android.sh
+release/*
+!release/README.md
+
 # Large config and data files
 config.json
 items.json

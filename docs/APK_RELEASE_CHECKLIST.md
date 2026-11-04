@@ -14,6 +14,7 @@ La [Constitución antirregresión](./APK_RELEASE_CONSTITUTION.md) es obligatoria
 | **Worktree firmado (único sitio de release)** | `/Users/felixdiaz/.gemini/antigravity/playground/tensor-planetoid/_worktrees/CLIC-POS/CLIC-POS-mobile-sqlite` |
 | **Salida APK release** | `<worktree>/android/app/build/outputs/apk/release` |
 | **Salida APK debug** | `<worktree>/android/app/build/outputs/apk/debug` (misma convención de nombres que `build.gradle`) |
+| **Entregables dentro del repo** | `<repo>/release` — `gradlew assembleDebug/assembleRelease` copia ahí cada APK con su `.sha256` |
 | **Metadata del último build** | `<worktree>/android/app/build/outputs/apk/release/output-metadata.json` |
 
 En otros equipos, sustituye la parte base por tu clon; el worktree firmado debe ser el checkout que contiene `key.properties` y el keystore (ver abajo).

@@ -34,7 +34,7 @@ npm run android:apk:debug
 
 APK generado en:
 
-`android/app/build/outputs/apk/debug/app-debug.apk`
+`release/Clic-Pos-<versionName>-debug.apk` (copia automática desde `android/app/build/outputs/apk/debug/`)
 
 ## Generar APK release firmado
 
@@ -48,7 +48,13 @@ npm run android:apk:release
 
 APK generado en:
 
-`android/app/build/outputs/apk/release/Clic-Pos-1.0-release.apk`
+`release/Clic-Pos-<versionName>-release.apk` (copia automática desde `android/app/build/outputs/apk/release/`)
+
+Si solo quieres volcar a `release/` lo último compilado, sin recompilar:
+
+```bash
+npm run android:apk:collect
+```
 
 ## Release
 
