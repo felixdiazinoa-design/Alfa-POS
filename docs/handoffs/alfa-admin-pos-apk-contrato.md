@@ -1,6 +1,11 @@
 # Handoff → ALFA-Admin: contrato con CLIC-POS
 
-Documento para el hilo que trabaja en **ALFA-Admin** (`https://alfa-admin-eta.vercel.app`).
+Documento para el hilo que trabaja en **ALFA-Admin** (`https://alfa-admin-nine.vercel.app`).
+
+> Ojo: existen dos proyectos Vercel llamados `alfa-admin`. El del canal del POS es
+> **`alfa-admin-nine.vercel.app`** (team `alfa-rms`, Supabase `tcble…`).
+> `alfa-admin-eta.vercel.app` pertenece a otro team y está desactualizado (sin
+> `/apk` ni `/apk-pos`): no usarlo.
 Describe exactamente lo que la caja (APK CLIC-POS) espera de ese panel, verificado
 contra el código del POS el 2026-11-04.
 
@@ -77,14 +82,14 @@ Configuración. No requiere contrato de datos, sólo existir y ofrecer el APK.
 
 ```bash
 # 1) El endpoint existe y es JSON
-curl -s -i https://alfa-admin-eta.vercel.app/api/pos-apk/latest
+curl -s -i https://alfa-admin-nine.vercel.app/api/pos-apk/latest
 
 # 2) CORS para el origen del WebView del APK
 curl -s -i -H 'Origin: https://localhost' \
-  https://alfa-admin-eta.vercel.app/api/pos-apk/latest | grep -i access-control
+  https://alfa-admin-nine.vercel.app/api/pos-apk/latest | grep -i access-control
 
 # 3) Tras publicar el release 1.1.373
-curl -s https://alfa-admin-eta.vercel.app/api/pos-apk/latest \
+curl -s https://alfa-admin-nine.vercel.app/api/pos-apk/latest \
   | python3 -m json.tool
 ```
 
@@ -94,11 +99,11 @@ Estado esperado:
 |---------|-----------|-------------------|
 | Hoy (sin publicar) | `null` | Sin aviso de actualización (`NO_RELEASE`) |
 | Tras publicar 1373 | objeto con `version_code: 1373` | Sin aviso (equipo ya está en 1373) |
-| Tras publicar 1374+ | objeto con `version_code` mayor | Banner "Nueva versión disponible" con `Origen: alfa-admin-eta.vercel.app` |
+| Tras publicar 1374+ | objeto con `version_code` mayor | Banner "Nueva versión disponible" con `Origen: alfa-admin-nine.vercel.app` |
 
 ## 5. Decisión pendiente — `/api/activation`
 
-Hoy `https://alfa-admin-eta.vercel.app/api/activation` responde **404**. El POS
+Hoy `https://alfa-admin-nine.vercel.app/api/activation` responde **404**. El POS
 **no** lo usa: la activación la resuelve el ERP (`alfa-rms.vercel.app`) vía
 `/api/sync/bootstrap/check` y `/api/sync/terminals`.
 
@@ -107,7 +112,7 @@ Confirmar una de estas dos opciones:
 1. **No aplica**: ALFA-Admin no implementa activación → no hay que hacer nada.
 2. **Sí aplica**: replicar el contrato de Cloud-Admin (`/api/activation/…`).
    En ese caso hay que avisar al POS para definir
-   `VITE_ACTIVATION_API_BASE_URL=https://alfa-admin-eta.vercel.app/api/activation`.
+   `VITE_ACTIVATION_API_BASE_URL=https://alfa-admin-nine.vercel.app/api/activation`.
 
 ## 6. Relacionado (sólo si entra en tu alcance) — vinculación tenant/empresa
 
