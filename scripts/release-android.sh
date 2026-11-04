@@ -372,8 +372,8 @@ EOF
 
 sync_release_artifacts "${DEST_DIR}" "${RELEASE_HISTORY_DIR}"
 
-# Entregables dentro del repositorio: <repo>/release (además del historial externo).
-REPO_RELEASE_DIR="${REPO_ROOT}/release"
+# Entregables dentro del repositorio: <repo>/APK (además del historial externo).
+REPO_RELEASE_DIR="${REPO_ROOT}/APK"
 mkdir -p "${REPO_RELEASE_DIR}"
 cp "${APK_DEST}" "${REPO_RELEASE_DIR}/"
 cp "${METADATA_DEST}" "${REPO_RELEASE_DIR}/"
