@@ -66,6 +66,29 @@ else
   info "Se reutiliza dist/ y android/app/src/main/assets/public (--skip-web)."
 fi
 
+# Origen del registro de APK que queda dentro del binario.
+# VITE_ALFA_ADMIN_BASE_URL (o .env) manda; si no está, el APK consulta Cloud-Admin.
+resolve_apk_update_origin() {
+  local env_file value
+  value="${VITE_ALFA_ADMIN_BASE_URL:-}"
+  if [[ -z "${value}" ]]; then
+    for env_file in "${REPO_ROOT}/.env" "${REPO_ROOT}/.env.local" "${REPO_ROOT}/.env.production"; do
+      [[ -f "${env_file}" ]] || continue
+      value="$(sed -n 's/^VITE_ALFA_ADMIN_BASE_URL=//p' "${env_file}" | tail -1 | tr -d '"' | tr -d "'" | tr -d '\r')"
+      [[ -n "${value}" ]] && break
+    done
+  fi
+  echo "${value}"
+}
+
+ALFA_ADMIN_URL="$(resolve_apk_update_origin)"
+if [[ -n "${ALFA_ADMIN_URL}" ]]; then
+  info "Registro de APK: ${ALFA_ADMIN_URL} (ALFA-Admin)"
+elif grep -rqs "cloud-admin.clicsuite.com" "${REPO_ROOT}/dist/assets" 2>/dev/null; then
+  info "AVISO: el APK consultará Cloud-Admin (https://cloud-admin.clicsuite.com/api/pos-apk/latest)."
+  info "       Para que apunte a ALFA-Admin define VITE_ALFA_ADMIN_BASE_URL en .env y recompila."
+fi
+
 info "Ejecutando ${GRADLE_TASK}…"
 run bash -c "cd '${REPO_ROOT}/android' && ./gradlew ${GRADLE_TASK} --console=plain"
 

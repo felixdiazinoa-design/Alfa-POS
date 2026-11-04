@@ -49,6 +49,10 @@ type CheckOptions = {
   force?: boolean;
 };
 
+// Origen del registro de APK. El POS consulta `{base}/api/pos-apk/latest`.
+// `VITE_ALFA_ADMIN_BASE_URL` (o metadata.alfaAdminBaseUrl) tiene prioridad sobre el
+// host heredado de CLIC Cloud-Admin, para que un APK compilado contra ALFA-Admin
+// nunca pida actualizaciones a cloud-admin.clicsuite.com.
 const CANONICAL_CLOUD_ADMIN_BASE_URL = 'https://cloud-admin.clicsuite.com';
 const LEGACY_CLOUD_ADMIN_BASE_URL = 'https://cloud-admin-gamma.vercel.app';
 const DEFAULT_POS_APK_LATEST_URL = `${CANONICAL_CLOUD_ADMIN_BASE_URL}/api/pos-apk/latest`;
@@ -112,6 +116,17 @@ const resolveCloudAdminBaseUrl = (config?: BusinessConfig | null): string => {
   );
 };
 
+/** Base de ALFA-Admin (registro de APK propio). Tiene prioridad sobre Cloud-Admin. */
+const resolveAlfaAdminBaseUrl = (config?: BusinessConfig | null): string => {
+  const env = getEnv();
+  const metadata = (config?.metadata || {}) as Record<string, unknown>;
+  return normalizeCloudAdminUrl(
+    metadata.alfaAdminBaseUrl
+    || metadata.alfa_admin_base_url
+    || env.VITE_ALFA_ADMIN_BASE_URL
+  );
+};
+
 export const resolvePosApkLatestUrl = (config?: BusinessConfig | null): string => {
   const env = getEnv();
   const metadata = (config?.metadata || {}) as Record<string, unknown>;
@@ -126,6 +141,8 @@ export const resolvePosApkLatestUrl = (config?: BusinessConfig | null): string =
   );
 
   if (explicitUrl) return explicitUrl;
+  const alfaAdminBaseUrl = resolveAlfaAdminBaseUrl(config);
+  if (alfaAdminBaseUrl) return `${alfaAdminBaseUrl}/api/pos-apk/latest`;
   if (configuredBaseUrl) return `${configuredBaseUrl}/api/pos-apk/latest`;
   return DEFAULT_POS_APK_LATEST_URL;
 };
@@ -146,6 +163,8 @@ export const resolvePosApkPortalUrl = (config?: BusinessConfig | null): string =
   );
 
   if (explicitUrl) return explicitUrl;
+  const alfaAdminBaseUrl = resolveAlfaAdminBaseUrl(config);
+  if (alfaAdminBaseUrl) return `${alfaAdminBaseUrl}/apk-pos`;
   if (configuredBaseUrl) return `${configuredBaseUrl}/apk-pos`;
   return DEFAULT_POS_APK_PORTAL_URL;
 };
@@ -317,6 +336,34 @@ export const openExternalUrl = async (url: string): Promise<void> => {
 
 export const openPosApkPortalUrl = async (config?: BusinessConfig | null): Promise<void> => {
   await openExternalUrl(resolvePosApkPortalUrl(config));
+};
+
+/**
+ * Origen efectivo del registro de APK, para mostrarlo en diagnóstico y en el log
+ * de `APK/build-apk.sh`: nunca debe apuntar por accidente a Cloud-Admin.
+ */
+export const describePosApkUpdateSource = (config?: BusinessConfig | null): {
+  latestUrl: string;
+  portalUrl: string;
+  baseUrl: string;
+  origin: 'ALFA_ADMIN' | 'CLOUD_ADMIN' | 'EXPLICIT' | 'DEFAULT';
+} => {
+  const latestUrl = resolvePosApkLatestUrl(config);
+  const portalUrl = resolvePosApkPortalUrl(config);
+  const alfaAdminBaseUrl = resolveAlfaAdminBaseUrl(config);
+  const cloudAdminBaseUrl = resolveCloudAdminBaseUrl(config);
+
+  let origin: 'ALFA_ADMIN' | 'CLOUD_ADMIN' | 'EXPLICIT' | 'DEFAULT' = 'DEFAULT';
+  if (alfaAdminBaseUrl && latestUrl.startsWith(alfaAdminBaseUrl)) origin = 'ALFA_ADMIN';
+  else if (cloudAdminBaseUrl && latestUrl.startsWith(cloudAdminBaseUrl)) origin = 'CLOUD_ADMIN';
+  else if (latestUrl !== DEFAULT_POS_APK_LATEST_URL) origin = 'EXPLICIT';
+
+  return {
+    latestUrl,
+    portalUrl,
+    baseUrl: alfaAdminBaseUrl || cloudAdminBaseUrl,
+    origin,
+  };
 };
 
 export const resetPosApkUpdateCheckForTests = () => {
