@@ -3,11 +3,16 @@ import { postErpSyncJson } from '../../utils/erpSyncLifecycle';
 import {
     getLoyaltyChannelAvailability,
     isErpLoyaltyChannelFlagEnabled,
+    isErpSyncRequestError,
     markErpRouteAvailable,
     markErpRouteUnavailable,
 } from '../../utils/erpDiagnostics';
-import { isRouteNotPublishedError, isTerminalBindingError } from '../../utils/erpSyncContract';
-import { isErpSyncRequestError } from '../../utils/erpSyncTransport';
+import {
+    isRouteNotPublishedError,
+    isTerminalBindingError,
+    mapErpSyncError,
+    type ErpSyncErrorDescription,
+} from '../../utils/erpSyncContract';
 import {
     enqueueLoyaltyOperation,
     listLoyaltyOutbox,
@@ -77,7 +82,11 @@ const classifyLoyaltyFailure = (
     path: string,
 ): { error: string; unavailable: boolean } => {
     if (isErpSyncRequestError(error)) {
-        const description = error.description;
+        // Se reconstruye la descripción con el contrato de sync de develop.
+        const description: ErpSyncErrorDescription = mapErpSyncError({
+            httpStatus: error.status,
+            payload: error.payload ?? (error.code ? { code: error.code } : undefined),
+        });
 
         if (isRouteNotPublishedError(description)) {
             markErpRouteUnavailable(path, description.code);

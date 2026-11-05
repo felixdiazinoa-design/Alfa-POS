@@ -21,6 +21,9 @@ import {
     type LoyaltyOutboxItem,
 } from '../utils/loyaltyOutbox';
 
+// Prueba del camino en línea: habilita el canal de lealtad (default apagado).
+process.env.VITE_ERP_SUPPORTS_LOYALTY_CHANNEL = 'true';
+
 let failures = 0;
 
 const check = (label: string, actual: unknown, expected: unknown) => {
