@@ -376,11 +376,24 @@ const promotionMatchesCategoryTarget = (promotion: Promotion, product: any): boo
 );
 
 /**
+ * Coincide `promotion.targetRefs` contra los refs de la variante de la línea
+ * (SKU, id de variante y código de barra), sin exigir `targetValue`.
+ */
+const variantLineMatchesResolvedRefs = (promotion: Promotion, item: CartItem): boolean => {
+    const targetRefs = Array.isArray(promotion.targetRefs) ? promotion.targetRefs : [];
+    if (targetRefs.length === 0) return false;
+    const normalizedTargets = new Set(targetRefs.map(normalizeVariantToken).filter(Boolean));
+    if (normalizedTargets.size === 0) return false;
+    return collectVariantLineReferences(item).some(ref => normalizedTargets.has(normalizeVariantToken(ref.value)));
+};
+
+/**
  * Objetivo BRAND (EGO Club T1): el ERP hidrata `targetRefs` con los ids/SKUs/códigos
  * de todos los ítems de la marca; como respaldo se compara `brandId`/`brand_id`.
  */
 const promotionMatchesBrandTarget = (promotion: Promotion, product: any): boolean => {
     if (promotionMatchesResolvedRefs(promotion, product)) return true;
+    if (variantLineMatchesResolvedRefs(promotion, product)) return true;
     const brand = normalizeMatchToken(product?.brandId ?? product?.brand_id);
     if (!brand) return false;
     return brand === normalizeMatchToken(promotion.targetValue)
@@ -580,7 +593,11 @@ const promotionIsCurrentlyEligible = (promotion: Promotion, config: BusinessConf
 const promotionTargetsProduct = (promotion: Promotion, product: any, config: BusinessConfig): boolean => {
     if (promotion.targetType === 'ALL') return true;
     if (promotion.targetType === 'PRODUCT') return promotionMatchesTargetReference(promotion, product);
-    if (promotion.targetType === 'VARIANT') return Boolean(resolveVariantPromotionMatch(promotion, product));
+    if (promotion.targetType === 'VARIANT') {
+        // Semántica de develop (parent product + variante) y respaldo de EGO Club T1:
+        // sin `targetValue`, coincide por `targetRefs` contra los refs de la variante.
+        return Boolean(resolveVariantPromotionMatch(promotion, product)) || variantLineMatchesResolvedRefs(promotion, product);
+    }
     if (promotion.targetType === 'BRAND') return promotionMatchesBrandTarget(promotion, product);
     if (promotion.targetType === 'CATEGORY') return promotionMatchesCategoryTarget(promotion, product);
 

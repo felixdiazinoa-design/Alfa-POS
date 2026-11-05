@@ -93,6 +93,7 @@ const describePromotionTarget = (promotion: Promotion) => {
    const typeLabelMap: Record<Exclude<Promotion['targetType'], 'ALL'>, string> = {
       PRODUCT: 'Producto',
       VARIANT: 'Variante',
+      BRAND: 'Marca',
       CATEGORY: 'Categoría',
       GROUP: 'Grupo',
       SEASON: 'Temporada',
