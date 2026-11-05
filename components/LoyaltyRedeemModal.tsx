@@ -51,12 +51,18 @@ const LoyaltyRedeemModal: React.FC<LoyaltyRedeemModalProps> = ({
     const [pointsInput, setPointsInput] = useState<string>(String(bounds.canRedeem ? bounds.max : bounds.minUnits));
     const [reason, setReason] = useState('Canje EGO Club');
     const [saving, setSaving] = useState(false);
+    // El ERP valida el mínimo global (min_redemption_points) aunque no siempre lo
+    // publique en la config del terminal: la caja debe aprenderlo del rechazo en
+    // vez de seguir ofreciendo un importe que el servidor va a negar.
+    const [serverMin, setServerMin] = useState<number | null>(null);
     const [error, setError] = useState<string | null>(null);
 
     const points = Math.floor(Number(pointsInput) || 0);
     const value = pointsToCurrency(points, config);
     const overMax = points > bounds.max;
-    const invalid = points <= 0 || overMax;
+    const effectiveMin = Math.max(bounds.minUnits, serverMin ?? 0);
+    const underMin = effectiveMin > 0 && points < effectiveMin;
+    const invalid = points <= 0 || overMax || underMin;
 
     const handleConfirm = async () => {
         setError(null);
@@ -65,7 +71,9 @@ const LoyaltyRedeemModal: React.FC<LoyaltyRedeemModalProps> = ({
             return;
         }
         if (invalid) {
-            setError(`El máximo canjeable en este ticket es ${bounds.max.toLocaleString('es-DO')} puntos`);
+            setError(underMin
+                ? `El canje requiere un saldo mínimo de ${effectiveMin.toLocaleString('es-DO')} puntos.`
+                : `El máximo canjeable en este ticket es ${bounds.max.toLocaleString('es-DO')} puntos`);
             return;
         }
 
@@ -80,7 +88,14 @@ const LoyaltyRedeemModal: React.FC<LoyaltyRedeemModalProps> = ({
             if (!result.ok) {
                 // Falla cerrada: no se aplica nada y se avisa al cajero. Si la capacidad no
                 // está publicada, el mensaje ya viene como "no disponible en esta caja".
-                setError(result.error || 'No se pudo canjear los puntos');
+                const message = result.error || 'No se pudo canjear los puntos';
+                const learned = Number(
+                    message.match(/m[ií]nimo de\s+([\d.,]+)\s+puntos/i)?.[1]?.replace(/[.,]/g, '') || 0,
+                );
+                if (Number.isFinite(learned) && learned > effectiveMin) {
+                    setServerMin(learned);
+                }
+                setError(message);
                 return;
             }
 
@@ -132,7 +147,7 @@ const LoyaltyRedeemModal: React.FC<LoyaltyRedeemModalProps> = ({
                         </div>
                         <div className="p-2 rounded-xl bg-gray-50 border border-gray-100">
                             <p className="text-[10px] font-black uppercase text-gray-400">Mínimo nivel</p>
-                            <p className="text-sm font-black text-gray-800">{bounds.minUnits.toLocaleString('es-DO')}</p>
+                            <p className="text-sm font-black text-gray-800">{effectiveMin.toLocaleString('es-DO')}</p>
                         </div>
                         <div className="p-2 rounded-xl bg-emerald-50 border border-emerald-100">
                             <p className="text-[10px] font-black uppercase text-emerald-600">Máximo</p>
