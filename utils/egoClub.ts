@@ -158,10 +158,15 @@ export const getRedeemRate = (config: BusinessConfig | null | undefined): number
  */
 export const getMinRedemptionUnits = (config: BusinessConfig | null | undefined, tier: unknown): number => {
     const fromTier = Number(getTierDefinition(config, tier)?.minRedemptionUnits);
-    if (Number.isFinite(fromTier) && fromTier > 0) return fromTier;
-
     const global = Number(config?.loyalty?.minRedemptionPoints);
-    return Number.isFinite(global) && global > 0 ? global : 0;
+
+    const tierMin = Number.isFinite(fromTier) && fromTier > 0 ? fromTier : 0;
+    const globalMin = Number.isFinite(global) && global > 0 ? global : 0;
+
+    // El ERP valida ambos umbrales y es la autoridad: si exige 1250 globales,
+    // no sirve mostrar 10 porque el nivel los tenga más bajos. Se aplica el
+    // mayor para que la caja bloquee antes de llamar al servidor.
+    return Math.max(tierMin, globalMin);
 };
 
 export interface RedemptionBounds {
