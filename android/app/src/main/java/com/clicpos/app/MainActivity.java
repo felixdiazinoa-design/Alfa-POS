@@ -13,6 +13,7 @@ import android.os.Debug;
 import android.os.PowerManager;
 import android.os.Process;
 import android.os.StatFs;
+import android.provider.Settings;
 import android.util.Log;
 import android.util.DisplayMetrics;
 import android.view.View;
@@ -171,6 +172,24 @@ public class MainActivity extends BridgeActivity {
         @JavascriptInterface
         public String getLaunchContext() {
             return activityRecreated ? "activity_recreated" : "fresh_start";
+        }
+
+        /**
+         * Identificador estable del dispositivo físico (Settings.Secure.ANDROID_ID).
+         * Sobrevive a desinstalación/reinstalación para el mismo par (dispositivo,
+         * llave de firma, usuario): es lo que permite reconocer que "es la misma caja"
+         * y re-vincular sin pasar por reautorización manual.
+         */
+        @JavascriptInterface
+        public String getStableDeviceId() {
+            try {
+                String androidId = Settings.Secure.getString(
+                        getContentResolver(), Settings.Secure.ANDROID_ID);
+                return androidId == null ? "" : androidId;
+            } catch (Exception error) {
+                Log.w(TAG, "Stable device id unavailable", error);
+                return "";
+            }
         }
 
         @JavascriptInterface
