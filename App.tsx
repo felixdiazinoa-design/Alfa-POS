@@ -104,7 +104,7 @@ import { buildZReportPaymentMethodSummary } from './utils/zReportPaymentSummary'
 import { applyPromotions, hasProductPromotion } from './utils/promotionEngine';
 import { calculateTransactionTaxSummary } from './utils/taxSummary';
 import { mapCustomersFromErp } from './utils/egoClub';
-import { flushLoyaltyOutbox } from './services/loyalty/LoyaltyService';
+import { flushLoyaltyOutbox, enqueueSaleDocumentReport } from './services/loyalty/LoyaltyService';
 import { calculateTransactionFiscalSummary } from './utils/fiscalBreakdown';
 import { extractTerminalOperationalDocumentState } from './utils/terminalConfigSnapshot';
 import { mergeDocumentSeriesCollection, resolveDocumentAssignmentId } from './utils/documentSeriesIdentity';
@@ -9706,6 +9706,16 @@ const AppContent: React.FC = () => {
     setTransactions([...transactions, txn]);
     syncFiscalDocument(txn).catch(console.error);
     backgroundSyncManager.triggerSync().catch(console.error);
+
+    // EGO Club (T6): el documento de venta ya está registrado; se reporta al ERP para que
+    // devengue los puntos. Se encola una sola vez por documento y fuera del flujo de
+    // impresión, así que la venta no espera a la red ni se duplica al reintentar.
+    if (config.loyalty?.isEnabled && txn.customerId && txn.status === 'COMPLETED') {
+      void enqueueSaleDocumentReport({
+        documentId: txn.id,
+        reference: txn.displayId || txn.id,
+      }).catch(error => console.warn('[EGO CLUB] no se pudo encolar el devengo:', error));
+    }
 
     const affectedPairs = new Set<string>();
     ledgerEntriesForCommit.forEach(entry => affectedPairs.add(`${entry.productId}|${entry.warehouseId}`));
