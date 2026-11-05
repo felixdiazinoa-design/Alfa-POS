@@ -42,6 +42,17 @@
   .chip{ display:inline-flex; align-items:center; gap:8px; height:38px; padding:0 14px;
          border-radius:11px; background:rgba(244,247,246,.08); font-size:12px; font-weight:700; }
   .chip i{ width:8px; height:8px; border-radius:50%; background:var(--lime); }
+  .chip.small{ height:34px; padding:0 12px; font-size:11px; background:transparent;
+               border:1px solid rgba(244,247,246,.16); }
+  .hbtn{ display:inline-flex; align-items:center; gap:8px; height:38px; padding:0 13px;
+         border-radius:11px; border:1px solid rgba(244,247,246,.18); background:rgba(244,247,246,.06);
+         color:rgba(244,247,246,.9); font-family:inherit; font-size:12px; font-weight:700;
+         cursor:pointer; transition:.15s; }
+  .hbtn:hover{ background:rgba(244,247,246,.12); }
+  .hbtn svg{ color:var(--teal); }
+  .hbtn.client b{ color:var(--lime); font-size:14px; line-height:1; }
+  .hbtn.fiscal{ border-color:rgba(184,227,54,.35); background:rgba(184,227,54,.1); color:var(--lime); }
+  .hbtn.fiscal svg{ color:var(--lime); }
   .clock{ text-align:right; font-size:11px; color:rgba(244,247,246,.5); line-height:1.4; }
   .clock b{ display:block; font-size:15px; color:var(--paper); font-weight:700; letter-spacing:.2px; }
 
@@ -64,7 +75,7 @@
   }
 
   .thead{ display:grid; grid-template-columns:70px 1fr 120px 110px 120px 154px; gap:10px;
-          padding:20px 14px 12px; font-size:10.5px; font-weight:800; letter-spacing:1px;
+          padding:6px 14px 12px; font-size:10.5px; font-weight:800; letter-spacing:1px;
           text-transform:uppercase; color:#9DAEAD; border-bottom:1px solid var(--line); }
   .thead div:nth-child(n+3){ text-align:right; }
 
@@ -162,21 +173,21 @@
     </div>
 
     <div class="chips">
-      <span class="chip"><i></i> En línea</span>
-      <span class="chip">Sincronizado</span>
+      <button class="hbtn client">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="8" r="3.4"/><path d="M5 20c0-3.4 3-5.3 7-5.3s7 1.9 7 5.3"/></svg>
+        <span>Cliente</span><b>＋</b>
+      </button>
+      <button class="hbtn fiscal">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 3h12v18l-3-2-3 2-3-2-3 2Z"/><path d="M9 8h6M9 12h6"/></svg>
+        <span>B02</span>
+      </button>
+      <span class="chip small"><i></i> En línea</span>
       <div class="clock"><b>08:44</b>Jue, 05 nov</div>
     </div>
   </header>
 
   <div class="body">
     <section class="ticket">
-      <div class="assign">
-        <span class="plus">＋</span> Asignar cliente al ticket
-        <span class="right">›</span>
-      </div>
-
-      <div class="fiscal">◉ Estado fiscal · B02 · Secuencia activa</div>
-
       <div class="thead">
         <div>Cant.</div><div>Descripción</div><div>Precio</div><div>ITBIS</div><div>Total</div><div class="act-h">Acciones</div>
       </div>

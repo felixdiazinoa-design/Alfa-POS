@@ -13,7 +13,8 @@ import {
    ShoppingBag, ScanBarcode, ArrowRight, Clock, Camera, AlertTriangle, BrushCleaning,
    MessageSquare, PlayCircle, Download, Lock, ArrowUpRight, Landmark,
    UserCheck, StickyNote, Inbox, Printer, QrCode, Box, Package, MapPin,
-   Cloud, RefreshCw, CloudOff, Layout, ChefHat, Building2, ClipboardCheck, Undo2, Coins
+   Cloud, RefreshCw, CloudOff, Layout, ChefHat, Building2, ClipboardCheck, Undo2, Coins,
+   CheckCircle2
 
 
 } from 'lucide-react';
@@ -2201,6 +2202,9 @@ const POSInterface: React.FC<POSInterfaceProps> = ({
    }, []);
 
    const [showDiscountModal, setShowDiscountModal] = useState(false);
+   // Acciones por línea del ticket denso (modo supermercado)
+   const [lineDiscountCartId, setLineDiscountCartId] = useState<string | null>(null);
+   const [sellerPickerCartId, setSellerPickerCartId] = useState<string | null>(null);
    const [showSplitModal, setShowSplitModal] = useState(false);
    const [showPaymentModal, setShowPaymentModal] = useState(false);
 
@@ -4808,6 +4812,40 @@ const POSInterface: React.FC<POSInterfaceProps> = ({
       setCouponCode('');
       setGlobalDiscount({ type: 'PERCENT', value: 0 });
    }, [cart.length, redeemedCoupon]);
+   /**
+    * Acciones por línea (ticket denso del modo supermercado).
+    *
+    * Duplicar clona la línea tal cual, sin volver a consultar catálogo ni stock:
+    * el stock se descuenta al cobrar, con el ticket ya cerrado.
+    */
+   const duplicateCartLine = useCallback((cartId: string) => {
+      onUpdateCart(prev => {
+         const index = prev.findIndex(item => item.cartId === cartId);
+         if (index < 0) return prev;
+         const source = prev[index];
+         const clone: CartItem = {
+            ...source,
+            cartId: `${source.cartId}-DUP-${Date.now().toString(36)}`,
+            createdAt: new Date().toISOString(),
+            dispatched: false,
+            restaurantCommittedAt: undefined,
+            ncf: undefined,
+         };
+         const next = [...prev];
+         next.splice(index + 1, 0, clone);
+         return next;
+      });
+   }, [onUpdateCart]);
+
+   const assignSellerToCartLine = useCallback((cartId: string, sellerId: string | null) => {
+      onUpdateCart(prev => prev.map(item => (
+         item.cartId === cartId
+            ? { ...item, salespersonId: sellerId || undefined }
+            : item
+      )));
+      setSellerPickerCartId(null);
+   }, [onUpdateCart]);
+
    const updateCartItem = async (updatedItem: CartItem | null, cartIdToDelete?: string) => {
       if (blockRecoveredUberOrderMutation('editar el pedido')) return;
       const isSubtotalizedMutation = hasSubtotalizedCart;
@@ -8233,6 +8271,10 @@ const POSInterface: React.FC<POSInterfaceProps> = ({
                   currencySymbol={baseCurrency.symbol}
                   lastAddedCartId={lastAddedCartId}
                   onRemoveItem={(cartId) => updateCartItem(null, cartId)}
+                  onDuplicateItem={duplicateCartLine}
+                  onLineDiscount={(cartId) => setLineDiscountCartId(cartId)}
+                  onAssignSeller={(cartId) => setSellerPickerCartId(cartId)}
+                  resolveSellerName={resolveSalespersonLabel}
                   containerStyle={isMobile ? bottomAwareScrollStyle : undefined}
                />
             ) : (
@@ -9016,6 +9058,112 @@ const POSInterface: React.FC<POSInterfaceProps> = ({
                returnToTicketView();
             }} />
          }
+
+         {/* Descuento acotado a una línea del ticket denso */}
+         {lineDiscountCartId && (() => {
+            const line = processedCart.find(item => item.cartId === lineDiscountCartId);
+            if (!line) return null;
+            const lineSubtotal = line.price * line.quantity;
+            return (
+               <GlobalDiscountModal
+                  currentSubtotal={lineSubtotal}
+                  currencySymbol={baseCurrency.symbol}
+                  initialValue={String(line.discountRate || '')}
+                  initialType="PERCENT"
+                  themeColor={config.themeColor}
+                  onClose={() => setLineDiscountCartId(null)}
+                  onConfirm={async (val, type) => {
+                     const numVal = parseFloat(val) || 0;
+                     const authorized = await requestApproval({
+                        permission: 'POS_DISCOUNT',
+                        actionDescription: `Aplicar descuento a ${line.name}`,
+                        context: {
+                           newValue: type === 'PERCENT'
+                              ? numVal
+                              : (lineSubtotal > 0 ? (numVal / lineSubtotal) * 100 : 0),
+                           originalValue: lineSubtotal,
+                        }
+                     });
+                     if (!authorized) return;
+
+                     const target = processedCart.find(item => item.cartId === lineDiscountCartId);
+                     if (!target) {
+                        setLineDiscountCartId(null);
+                        return;
+                     }
+                     const quantity = Math.abs(target.quantity) || 1;
+                     const subtotal = target.price * quantity;
+                     const discountTotal = type === 'PERCENT'
+                        ? subtotal * (Math.min(100, Math.max(0, numVal)) / 100)
+                        : Math.min(numVal, subtotal);
+                     const nextUnitPrice = Math.max(0, (subtotal - discountTotal) / quantity);
+
+                     await updateCartItem({
+                        ...target,
+                        originalPrice: target.originalPrice ?? target.price,
+                        price: Number(nextUnitPrice.toFixed(2)),
+                        discountRate: type === 'PERCENT' ? Math.min(100, Math.max(0, numVal)) : undefined,
+                        discountAmount: Number(discountTotal.toFixed(2)),
+                        adjustmentSource: 'MANUAL_DISCOUNT',
+                     });
+                     setLineDiscountCartId(null);
+                  }}
+               />
+            );
+         })()}
+
+         {/* Vendedor por línea */}
+         {sellerPickerCartId && (() => {
+            const line = processedCart.find(item => item.cartId === sellerPickerCartId);
+            if (!line) return null;
+            return (
+               <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
+                  <div className="w-full max-w-md overflow-hidden rounded-2xl bg-white shadow-2xl">
+                     <div className="flex items-start justify-between border-b border-[#E1E9E8] px-5 py-4">
+                        <div>
+                           <p className="text-[10px] font-black uppercase tracking-[0.18em] text-[#9DAEAD]">Asignar vendedor</p>
+                           <p className="mt-1 text-sm font-black text-[#132124]">{line.name}</p>
+                        </div>
+                        <button onClick={() => setSellerPickerCartId(null)} className="rounded-lg p-1.5 text-[#9DAEAD] hover:bg-[#F4F7F6]">
+                           <X size={18} />
+                        </button>
+                     </div>
+                     <div className="max-h-[52vh] overflow-y-auto p-3">
+                        {salesUsers.length === 0 && (
+                           <p className="px-2 py-6 text-center text-xs font-semibold text-[#6C7F80]">
+                              El ERP no ha enviado vendedores para esta caja.
+                           </p>
+                        )}
+                        {salesUsers.map(seller => {
+                           const active = line.salespersonId === seller.id;
+                           return (
+                              <button
+                                 key={seller.id}
+                                 type="button"
+                                 onClick={() => void assignSellerToCartLine(line.cartId!, seller.id)}
+                                 className={`mb-1 flex w-full items-center justify-between rounded-xl px-3 py-2.5 text-left transition-colors ${active ? 'bg-[#E7F7F6] text-[#00877F]' : 'hover:bg-[#F4F7F6] text-[#1B3034]'}`}
+                              >
+                                 <span className="text-sm font-bold">{seller.name}</span>
+                                 {active && <CheckCircle2 size={16} />}
+                              </button>
+                           );
+                        })}
+                     </div>
+                     {line.salespersonId && (
+                        <div className="border-t border-[#E1E9E8] p-3">
+                           <button
+                              type="button"
+                              onClick={() => void assignSellerToCartLine(line.cartId!, null)}
+                              className="w-full rounded-xl border border-[#F2DCD8] bg-[#FEF6F5] px-3 py-2 text-xs font-bold uppercase tracking-wide text-[#C0392B]"
+                           >
+                              Quitar vendedor
+                           </button>
+                        </div>
+                     )}
+                  </div>
+               </div>
+            );
+         })()}
 
          <SupervisorModal {...supervisorModalProps} users={users} />
 
