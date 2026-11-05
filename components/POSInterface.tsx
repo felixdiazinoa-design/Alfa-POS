@@ -4335,11 +4335,21 @@ const POSInterface: React.FC<POSInterfaceProps> = ({
    }, []);
 
    const renderTicketBrand = useCallback((compact = false) => (
-      <div className={`inline-flex flex-col items-center ${compact ? 'gap-1.5' : 'gap-2.5'}`}>
-         <div className={`inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-slate-950 shadow-sm ${compact ? 'px-2.5 py-1.5' : 'px-4 py-2.5'}`}>
-            <span className={`font-black uppercase tracking-[0.22em] text-slate-100 ${compact ? 'text-[0.72rem]' : 'text-[0.8rem]'}`}>CLIC</span>
-            <span className={`font-black uppercase tracking-[0.22em] text-sky-400 ${compact ? 'text-[0.72rem]' : 'text-[0.8rem]'}`}>POS</span>
-         </div>
+      <div className={`inline-flex items-center ${compact ? 'gap-2' : 'gap-2.5'}`}>
+         <svg
+            className={compact ? 'h-6 w-6 shrink-0' : 'h-8 w-8 shrink-0'}
+            viewBox="0 0 64 64"
+            aria-hidden="true"
+         >
+            <path fill="#132124" d="M7 52 26.5 12 35 29.2 23.8 52Z" />
+            <path fill="#00A7A0" d="M29.8 8H43l14 29.3-16.4-5.8Z" />
+            <path fill="#B8E336" d="m38.8 35 16.8 6L61 52H46.7Z" />
+            <path fill="#F4F7F6" d="m28.4 33.4 6.2 12.7L31.7 52h-8Z" />
+         </svg>
+         <span className={`whitespace-nowrap font-black tracking-[-0.02em] ${compact ? 'text-[0.95rem]' : 'text-[1.15rem]'}`}>
+            <span className="text-[#132124]">ALFA</span>
+            <span className="text-[#00A7A0]">-POS</span>
+         </span>
       </div>
    ), []);
    const cartQuantity = useMemo(
