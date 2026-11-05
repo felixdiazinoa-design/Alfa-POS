@@ -2186,7 +2186,9 @@ export interface Promotion {
 
   // Trigger
   trigger?: {
-    type: 'TOTAL_SPEND' | 'ITEM_QTY' | 'MIN_TICKET_AMOUNT';
+    // El ERP puede degradar tipos desconocidos, así que se acepta cualquier
+    // regla declarada (p. ej. 'SEGUNDO_PAR') además de las conocidas.
+    type: 'TOTAL_SPEND' | 'ITEM_QTY' | 'MIN_TICKET_AMOUNT' | (string & {});
     value: number;
     excludeCategories?: string[];
     isRecursive?: boolean;

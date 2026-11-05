@@ -621,6 +621,9 @@ const resolvePromotionMinQuantity = (promotion: Promotion): number => {
         const value = Number(candidate);
         if (Number.isFinite(value) && value > 0) return Math.floor(value);
     }
+    const triggerQuantity = Number(promotion.trigger?.value);
+    if (Number.isFinite(triggerQuantity) && triggerQuantity > 0) return Math.floor(triggerQuantity);
+
     const condition = (promotion.conditions || []).find(entry => entry?.type === 'MIN_QUANTITY');
     const fromCondition = Number(condition?.value);
     return Number.isFinite(fromCondition) && fromCondition > 0 ? Math.floor(fromCondition) : 0;
@@ -637,18 +640,33 @@ const SECOND_PAIR_RULE_KEYS = new Set(['SEGUNDO_PAR', 'SEGUNDO PAR', 'SECOND_PAI
 
 const resolveSecondPairRule = (promotion: Promotion): { minPairs: number } | null => {
     const rawTrigger = promotion.triggerConfig ?? promotion.trigger_config;
-    const trigger: Record<string, unknown> = rawTrigger && typeof rawTrigger === 'object' && !Array.isArray(rawTrigger)
+    const legacyTrigger: Record<string, unknown> = rawTrigger && typeof rawTrigger === 'object' && !Array.isArray(rawTrigger)
         ? rawTrigger as Record<string, unknown>
         : {};
+
+    // El ERP envía la regla en `trigger` y, si el tipo no está en su lista blanca
+    // (SEGUNDO_PAR no lo está), degrada `type` a DISCOUNT. Por eso la única pista
+    // fiable es trigger.type junto con targetStrategy.mode = CHEAPEST_ITEM.
     const ruleTokens = [
-        String((promotion as unknown as { type?: unknown }).type ?? ''),
-        String(trigger.rule ?? ''),
-        String(trigger.ruleType ?? ''),
-        String(trigger.rule_type ?? ''),
-        String(trigger.promotionRule ?? ''),
+        String(promotion.trigger?.type ?? ''),
+        String(legacyTrigger.type ?? ''),
+        String(legacyTrigger.rule ?? ''),
+        String(legacyTrigger.ruleType ?? ''),
     ].map((value) => value.trim().toUpperCase());
-    if (!ruleTokens.some((token) => SECOND_PAIR_RULE_KEYS.has(token))) return null;
-    return { minPairs: Math.max(2, resolvePromotionMinQuantity(promotion) || 2) };
+
+    const declaredAsSecondPair = ruleTokens.some((token) => SECOND_PAIR_RULE_KEYS.has(token));
+    const cheapestFirstHint = promotion.targetStrategy?.mode === 'CHEAPEST_ITEM'
+        && ruleTokens.some((token) => token.includes('PAR') || token.includes('PAIR') || token.includes('UNIT'));
+
+    if (!declaredAsSecondPair && !cheapestFirstHint) return null;
+
+    const triggerQuantity = Number(promotion.trigger?.value);
+    const minPairs = Math.max(
+        2,
+        Number.isFinite(triggerQuantity) && triggerQuantity >= 2 ? Math.floor(triggerQuantity) : 0,
+        resolvePromotionMinQuantity(promotion) || 2,
+    );
+    return { minPairs };
 };
 
 const promotionMeetsQuantityRule = (promotion: Promotion, item: CartItem): boolean => {
