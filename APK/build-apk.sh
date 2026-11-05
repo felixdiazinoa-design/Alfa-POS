@@ -18,6 +18,9 @@
 #   APK/Clic-Pos-<versionName>-release.apk        si hay keystore configurado
 #   APK/unsigned/…                                APK release sin keystore (no instalable)
 #   APK/logs/build-<tipo>-<fecha>.log             log completo del build
+#
+# Al terminar ejecuta APK/verify-apk.sh: si al binario le falta EGO Club,
+# CardNET o el id de dispositivo estable, el build falla y no se publica.
 
 set -euo pipefail
 
@@ -169,6 +172,20 @@ shopt -u nullglob
 if [[ "${FOUND}" == "0" ]]; then
   echo "ERROR: no se generó ningún APK. Revisa ${LOG_FILE}" >&2
   exit 1
+fi
+
+# Puerta de contenido: un APK sin EGO Club o sin CardNET no debe publicarse.
+# (La 1.1.374 salió sin EGO Club porque se compiló desde un worktree atrasado.)
+if [[ -x "${SCRIPT_DIR}/verify-apk.sh" ]]; then
+  VERIFY_TARGET="$(ls -t "${SCRIPT_DIR}"/*-"${VARIANT}".apk 2>/dev/null | head -1 || true)"
+  if [[ -n "${VERIFY_TARGET}" ]]; then
+    echo
+    info "Verificando contenido de $(basename "${VERIFY_TARGET}")…"
+    if ! "${SCRIPT_DIR}/verify-apk.sh" "${VERIFY_TARGET}"; then
+      echo "ERROR: el APK no contiene todo lo requerido; revisa el log del build." >&2
+      exit 1
+    fi
+  fi
 fi
 
 echo

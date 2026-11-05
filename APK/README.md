@@ -8,6 +8,7 @@ que buscarlo: se compila desde esta carpeta y el resultado cae aquí mismo.
 |---------|--------|
 | `build-apk.sh` | Compila web + sincroniza Capacitor + ejecuta Gradle y deja el APK aquí. |
 | `install-apk.sh` | Instala por ADB (verifica firma y ABI) con diagnóstico de errores. |
+| `verify-apk.sh` | **Puerta de contenido**: falla si al APK le falta EGO Club, CardNET o el id de dispositivo estable. `build-apk.sh` la ejecuta siempre. |
 | `Clic-Pos-<versionName>-debug.apk` | APK de depuración, firmado con la clave debug. Instalable en emulador. |
 | `Clic-Pos-<versionName>-release.apk` | APK release **solo si** existe `android/key.properties` (firma real). |
 | `unsigned/` | APK release compilado sin keystore. **No es instalable** (Genymotion lo rechaza). |
@@ -16,6 +17,23 @@ que buscarlo: se compila desde esta carpeta y el resultado cae aquí mismo.
 
 Los APK, logs y checksums están en `.gitignore`: esta carpeta versiona únicamente
 este README y los dos scripts.
+
+## Verificar antes de publicar
+
+```bash
+./APK/verify-apk.sh                                   # el release más reciente
+./APK/verify-apk.sh APK/Clic-Pos-1.1.375-release.apk  # uno concreto
+```
+
+Comprueba, leyendo el bundle web dentro del APK, que existan `Alta EGO Club`,
+`Tarjeta EGO Club`, `Canjear puntos EGO Club`, `CardNET` y `ANDROID-`; además
+muestra `versionCode`/`versionName` y el certificado de firma. Si falta algo sale
+con código 1 y no debe publicarse.
+
+> Motivo: la **1.1.374** se publicó compilada desde un worktree firmado atrasado
+> (commit del 2026-10-30) y salió **sin EGO Club**, aunque el repo ya lo tenía.
+> `build-apk.sh` ejecuta esta verificación al terminar, así que un binario
+> incompleto ya no puede llegar al canal.
 
 ## Compilar
 
