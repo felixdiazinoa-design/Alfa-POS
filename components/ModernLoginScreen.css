@@ -380,10 +380,13 @@
   height: 100vh;
   display: flex;
   flex-direction: column;
-  justify-content: space-between;
+  justify-content: flex-start;
   align-items: flex-start;
   gap: 0;
-  padding: 3.2rem 3rem 2.4rem;
+  min-height: 100vh;
+  height: auto;
+  box-sizing: border-box;
+  padding: 3rem 3rem 2rem;
   border-radius: 0;
   border: none;
   background: #132124;
@@ -413,6 +416,7 @@
 }
 .alfa-brand-top,
 .alfa-brand-bottom { position: relative; z-index: 2; width: 100%; }
+.alfa-brand-bottom { margin-top: auto; }
 
 .alfa-brand-mark { width: 68px; height: 68px; margin-bottom: 1.4rem; }
 .modern-login-brand .modern-login-brand-wordmark {
@@ -459,7 +463,7 @@
   box-shadow: 0 0 0 4px rgba(184, 227, 54, 0.18);
 }
 .alfa-brand-meta {
-  margin-top: 1.4rem;
+  margin-top: 1rem;
   display: flex;
   flex-wrap: wrap;
   gap: 1.9rem;
