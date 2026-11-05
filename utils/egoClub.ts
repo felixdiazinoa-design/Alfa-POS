@@ -84,10 +84,30 @@ export const getTierBadgeClass = (tier: unknown): string => {
 export const mapCustomerFromErp = (raw: any): Customer => {
     if (!raw || typeof raw !== 'object') return raw as Customer;
 
-    const rawTier = raw.tier ?? raw.loyalty_tier ?? raw.membership_tier;
+    // La proyección de lealtad puede venir anidada en `metadata` (el ERP del
+    // grupo guarda ahí loyaltyPoints / loyaltyBalance / loyaltyCards[]).
+    const meta = raw.metadata && typeof raw.metadata === 'object' ? raw.metadata : {};
+    const metaCard = Array.isArray(meta.loyaltyCards) && meta.loyaltyCards.length > 0
+        ? meta.loyaltyCards[0]
+        : null;
+
+    const rawTier = raw.tier
+        ?? raw.loyalty_tier
+        ?? raw.membership_tier
+        ?? meta.customerTier
+        ?? meta.loyalty_tier
+        ?? meta.tier;
     const tier = normalizeTier(rawTier);
 
-    const rawPoints = raw.loyaltyPoints ?? raw.loyalty_points ?? raw.points_balance;
+    const rawPoints = raw.loyaltyPoints
+        ?? raw.loyalty_points
+        ?? raw.points_balance
+        ?? meta.loyaltyPoints
+        ?? meta.loyalty_points
+        ?? meta.loyaltyBalance
+        ?? meta.points_balance
+        ?? metaCard?.pointsBalance
+        ?? metaCard?.points_balance;
     const loyaltyPoints = Number.isFinite(Number(rawPoints)) ? Number(rawPoints) : undefined;
 
     // Se descartan las variantes crudas para que un tier/nivel inválido no se cuele en el
