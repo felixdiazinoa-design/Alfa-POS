@@ -11631,6 +11631,7 @@ const AppContent: React.FC = () => {
             customers={customers}
             products={products}
             onUpdateProducts={setProducts}
+            onUpdateCustomers={setCustomers}
             warehouses={warehouses}
             cart={cart}
             transactions={transactions}

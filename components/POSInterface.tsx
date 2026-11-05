@@ -186,6 +186,8 @@ export interface POSInterfaceProps {
    customers: Customer[];
    products: Product[];
    onUpdateProducts: (products: Product[]) => void;
+   /** Actualiza la colección de clientes (p. ej. saldo de puntos tras un canje). */
+   onUpdateCustomers?: (updater: (customers: Customer[]) => Customer[]) => void;
    warehouses: Warehouse[];
    cart: CartItem[];
    transactions: Transaction[];
@@ -1123,6 +1125,7 @@ const POSInterface: React.FC<POSInterfaceProps> = ({
    currentUser,
    products,
    onUpdateProducts,
+   onUpdateCustomers,
    roles,
    users,
    customers,
@@ -9066,6 +9069,18 @@ const POSInterface: React.FC<POSInterfaceProps> = ({
                      redeemedAt: new Date().toISOString(),
                      terminalId: activeTerminalId,
                   });
+                  // El ERP es la autoridad del saldo: se refleja en la colección de
+                  // clientes para que la tarjeta y el próximo canje no muestren el
+                  // saldo anterior hasta el próximo sync.
+                  if (typeof result.balanceAfter === 'number' && onUpdateCustomers) {
+                     const balance = Math.max(0, Math.floor(result.balanceAfter));
+                     onUpdateCustomers((list) => list.map(customer => (
+                        customer.id === selectedCustomer.id
+                           ? { ...customer, loyaltyPoints: balance }
+                           : customer
+                     )));
+                     onSelectCustomer({ ...selectedCustomer, loyaltyPoints: balance });
+                  }
                   setSuccessToast(`Canje EGO Club: ${result.points.toLocaleString('es-DO')} pts`);
                }}
             />
