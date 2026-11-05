@@ -85,6 +85,25 @@ const ProductTableSupermarket: React.FC<ProductTableSupermarketProps> = ({
                         const sellerName = item.salespersonId && resolveSellerName
                             ? resolveSellerName(item.salespersonId)
                             : '';
+                        // El origen del descuento importa en caja: sin esto el operador ve
+                        // 'Descuento aplicado' y no sabe si fue promoción, cupón o manual.
+                        const discountAmount = Math.max(
+                            0,
+                            ((Number(item.originalPrice) || item.price) - item.price) * Math.abs(item.quantity || 1),
+                        );
+                        const discountPct = item.originalPrice && item.originalPrice > 0
+                            ? Math.round((1 - item.price / item.originalPrice) * 100)
+                            : 0;
+                        const discountOrigin = (() => {
+                            if (item.appliedPromotionName) return item.appliedPromotionName;
+                            if (item.adjustmentSource === 'MANUAL_DISCOUNT') return 'Manual';
+                            if (item.adjustmentSource === 'PROMOTION') return 'Promoción';
+                            if (item.adjustmentSource === 'TARIFF') return 'Tarifa';
+                            return 'Descuento';
+                        })();
+                        const discountLabel = discountAmount > 0
+                            ? `${discountOrigin} −${currencySymbol}${discountAmount.toFixed(2)}${discountPct > 0 ? ` (${discountPct}%)` : ''}`
+                            : discountOrigin;
                         const longPrice = currencySymbol.length + item.price.toFixed(2).length > 13;
                         const longTax = currencySymbol.length + taxAmount.toFixed(2).length > 13;
                         const longTotal = currencySymbol.length + total.toFixed(2).length > 13;
@@ -117,8 +136,12 @@ const ProductTableSupermarket: React.FC<ProductTableSupermarketProps> = ({
                                         {displayCode && <span className="supermarket-code mt-1 block break-all text-xs text-[#6C7F80] font-mono">{displayCode}</span>}
                                         <div className="mt-1 flex flex-wrap items-center gap-2">
                                             {hasDiscount && (
-                                                <span className="text-[11px] font-bold leading-none text-[#00877F]">
-                                                    Descuento aplicado
+                                                <span
+                                                    className="inline-flex items-center gap-1 rounded-md bg-[#E7F7F6] px-1.5 py-0.5 text-[10px] font-black uppercase tracking-wide text-[#00877F]"
+                                                    title={`Precio de lista ${currencySymbol}${(item.originalPrice || 0).toFixed(2)} · cobrado ${currencySymbol}${item.price.toFixed(2)}`}
+                                                >
+                                                    <Percent size={10} />
+                                                    {discountLabel}
                                                 </span>
                                             )}
                                             {sellerName && (
