@@ -3390,7 +3390,10 @@ const POSInterface: React.FC<POSInterfaceProps> = ({
             variantInfo,
             appliedTaxIds: effectiveTaxIds,
             production_area_id: productionAreaId || undefined,
-            originalPrice: getProductPrice(product),
+            // Debe partir del mismo precio que se cobra (variante incluida). Si se
+            // usa el del padre, una variante más barata parece un descuento del 30 %
+            // y la línea muestra 'Descuento aplicado' sin que exista.
+            originalPrice: resolveVariantSalesPrice(selectedVariant, getProductPrice(product)),
             trackingData,
             ...consignmentPatch,
          };
