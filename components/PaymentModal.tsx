@@ -37,6 +37,11 @@ import {
    ingenicoAzulWebApiService,
 } from '../services/payments/IngenicoAzulWebApiService';
 import {
+   CardNetEcrError,
+   cardNetEcrService,
+   generateCardNetInvoiceTicket,
+} from '../services/payments/CardNetEcrService';
+import {
    createPaymentIntegrationAuditEvent,
    dispatchAuditEventConfigUpdate,
 } from '../services/payments/paymentIntegrationAudit';
@@ -632,13 +637,25 @@ const UnifiedPaymentModal: React.FC<PaymentModalProps> = ({ total, items, taxAmo
                ? await ingenicoAzulWebApiService.sale(integration, {
                   amount: amountInBase,
                })
-               : (() => {
-                  throw new Error(`La integración ${integration.provider} todavía no está soportada en caja.`);
-               })();
+               : integration.provider === 'CARDNET'
+                  ? await cardNetEcrService.sale(integration, {
+                     amount: amountInBase,
+                     itbis: proportionalTax,
+                     invoiceTicket: generateCardNetInvoiceTicket(),
+                  })
+                  : (() => {
+                     throw new Error(`La integración ${integration.provider} todavía no está soportada en caja.`);
+                  })();
 
          if (integration.provider === 'AZUL') {
             requestDetails.Itbis = proportionalTax.toFixed(2);
             requestDetails.OrderNumber = orderNumber;
+         }
+
+         if (integration.provider === 'CARDNET') {
+            requestDetails.Itbis = proportionalTax.toFixed(2);
+            requestDetails.Ticket = 'invoiceNumber' in gatewayResult ? (gatewayResult.invoiceNumber || '') : '';
+            requestDetails.Trama = 'CN00';
          }
 
          const gatewayReference = 'referenceNumber' in gatewayResult
@@ -696,7 +713,9 @@ const UnifiedPaymentModal: React.FC<PaymentModalProps> = ({ total, items, taxAmo
             gatewayResponseMessage: gatewayResult.responseMessage,
             gatewayOrderNumber: 'orderNumber' in gatewayResult ? (gatewayResult.orderNumber || orderNumber) : orderNumber,
             gatewayProcessedAmount: roundToTwo(amountInBase),
-            gatewayProcessedTaxAmount: integration.provider === 'AZUL' ? roundToTwo(proportionalTax) : 0,
+            gatewayProcessedTaxAmount: integration.provider === 'AZUL' || integration.provider === 'CARDNET'
+               ? roundToTwo(proportionalTax)
+               : 0,
             gatewayAuthorizationCode: gatewayResult.authorizationCode,
             gatewayReference,
             gatewaySequenceNumber: 'sequenceNumber' in gatewayResult
@@ -709,6 +728,12 @@ const UnifiedPaymentModal: React.FC<PaymentModalProps> = ({ total, items, taxAmo
             gatewayMaskedPan: gatewayResult.maskedPan,
             gatewayCardBrand: gatewayResult.cardBrand,
             gatewayEntryMode: gatewayResult.entryMode,
+            gatewayHost: integration.provider === 'CARDNET' && 'host' in gatewayResult
+               ? gatewayResult.host
+               : undefined,
+            gatewayCardProduct: integration.provider === 'CARDNET' && 'productType' in gatewayResult
+               ? String(gatewayResult.productType || '')
+               : undefined,
             gatewayReceiptMerchant: gatewayResult.receiptMerchant,
             gatewayReceiptClient: gatewayResult.receiptClient,
             gatewaySignatureData: 'signatureData' in gatewayResult ? gatewayResult.signatureData : undefined,
@@ -718,8 +743,9 @@ const UnifiedPaymentModal: React.FC<PaymentModalProps> = ({ total, items, taxAmo
       } catch (error) {
          const gatewayError = error instanceof AzulGatewayError ? error : null;
          const ingenicoError = error instanceof IngenicoAzulWebApiError ? error : null;
+         const cardNetError = error instanceof CardNetEcrError ? error : null;
          if (intent) {
-            const normalized = gatewayError?.normalized || ingenicoError?.normalized;
+            const normalized = gatewayError?.normalized || ingenicoError?.normalized || cardNetError?.parsed;
             await paymentIntentService.markFailed(intent.intentId, {
                declined: Boolean(normalized && normalized.approved === false),
                error: error instanceof Error ? error.message : 'Resultado desconocido del procesador.',
@@ -740,9 +766,16 @@ const UnifiedPaymentModal: React.FC<PaymentModalProps> = ({ total, items, taxAmo
                         Itbis: proportionalTax.toFixed(2),
                         OrderNumber: orderNumber,
                      }
-                     : {
-                        Amount: amountInBase.toFixed(2),
-                     },
+                     : integration.provider === 'CARDNET'
+                        ? {
+                           Amount: amountInBase.toFixed(2),
+                           Itbis: proportionalTax.toFixed(2),
+                           Trama: 'CN00',
+                           Endpoint: integration.baseUrl,
+                        }
+                        : {
+                           Amount: amountInBase.toFixed(2),
+                        },
                   responseDetails: {
                      MerchantId:
                         gatewayError?.normalized?.merchantId ||
@@ -756,23 +789,41 @@ const UnifiedPaymentModal: React.FC<PaymentModalProps> = ({ total, items, taxAmo
                         '',
                      EntryMode: gatewayError?.normalized?.entryMode || ingenicoError?.normalized?.entryMode || '',
                      CardBrand: gatewayError?.normalized?.cardBrand || ingenicoError?.normalized?.cardBrand || '',
+                     ...(cardNetError?.transcript ? { Traza: cardNetError.transcript.slice(0, 400) } : {}),
                   },
                   responseCode:
                      gatewayError?.normalized?.responseCode ||
                      gatewayError?.response?.ResponseCode ||
-                     ingenicoError?.normalized?.responseCode,
+                     ingenicoError?.normalized?.responseCode ||
+                     cardNetError?.parsed?.responseCode,
                   responseMessage:
                      gatewayError?.normalized?.responseMessage ||
                      gatewayError?.response?.ResponseMessage ||
-                     ingenicoError?.normalized?.responseMessage,
-                  authorizationCode: gatewayError?.normalized?.authorizationCode || ingenicoError?.normalized?.authorizationCode,
-                  referenceNumber: gatewayError?.normalized?.referenceNumber || ingenicoError?.normalized?.transactionReference,
+                     ingenicoError?.normalized?.responseMessage ||
+                     cardNetError?.parsed?.responseMessage,
+                  authorizationCode:
+                     gatewayError?.normalized?.authorizationCode ||
+                     ingenicoError?.normalized?.authorizationCode ||
+                     cardNetError?.parsed?.sale?.authorizationCode,
+                  referenceNumber:
+                     gatewayError?.normalized?.referenceNumber ||
+                     ingenicoError?.normalized?.transactionReference ||
+                     cardNetError?.parsed?.sale?.referenceNumber,
                   invoiceNumber: gatewayError?.normalized?.invoiceNumber || ingenicoError?.normalized?.invoiceNumber,
-                  sequenceNumber: gatewayError?.normalized?.sequenceNumber,
-                  maskedPan: gatewayError?.normalized?.maskedPan || ingenicoError?.normalized?.maskedPan,
-                  entryMode: gatewayError?.normalized?.entryMode || ingenicoError?.normalized?.entryMode,
+                  sequenceNumber: gatewayError?.normalized?.sequenceNumber || cardNetError?.parsed?.sale?.sequenceNumber,
+                  maskedPan:
+                     gatewayError?.normalized?.maskedPan ||
+                     ingenicoError?.normalized?.maskedPan ||
+                     cardNetError?.parsed?.sale?.maskedPan,
+                  entryMode:
+                     gatewayError?.normalized?.entryMode ||
+                     ingenicoError?.normalized?.entryMode ||
+                     cardNetError?.parsed?.sale?.entryMode,
                   merchantId: gatewayError?.normalized?.merchantId || ingenicoError?.normalized?.merchantId,
-                  terminalId: gatewayError?.normalized?.terminalId || ingenicoError?.normalized?.terminalId,
+                  terminalId:
+                     gatewayError?.normalized?.terminalId ||
+                     ingenicoError?.normalized?.terminalId ||
+                     cardNetError?.parsed?.sale?.terminalId,
                })
             );
          }

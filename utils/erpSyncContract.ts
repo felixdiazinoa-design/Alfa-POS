@@ -273,3 +273,8 @@ export const mapErpSyncError = (params: {
 export const isTerminalBindingError = (description: ErpSyncErrorDescription | null | undefined): boolean => (
     Boolean(description && description.terminal)
 );
+
+/** `true` si la ruta sync todavía no está publicada en el ERP (404). */
+export const isRouteNotPublishedError = (description: ErpSyncErrorDescription | null | undefined): boolean => (
+    description?.kind === 'ROUTE_NOT_PUBLISHED'
+);

@@ -34,7 +34,14 @@ npm run android:apk:debug
 
 APK generado en:
 
-`android/app/build/outputs/apk/debug/app-debug.apk`
+`APK/Clic-Pos-<versionName>-debug.apk` (copia automática desde `android/app/build/outputs/apk/debug/`)
+
+También puedes compilar e instalar todo desde la carpeta `APK/`:
+
+```bash
+./APK/build-apk.sh debug     # compila y deja el APK en APK/
+./APK/install-apk.sh --launch # instala por ADB y abre la app
+```
 
 ## Generar APK release firmado
 
@@ -48,7 +55,15 @@ npm run android:apk:release
 
 APK generado en:
 
-`android/app/build/outputs/apk/release/Clic-Pos-1.0-release.apk`
+`APK/Clic-Pos-<versionName>-release.apk` (copia automática desde `android/app/build/outputs/apk/release/`)
+
+Sin `android/key.properties` el release se compila pero queda en `APK/unsigned/`: **no es instalable**.
+
+Si solo quieres volcar a `APK/` lo último compilado, sin recompilar:
+
+```bash
+npm run android:apk:collect
+```
 
 ## Release
 

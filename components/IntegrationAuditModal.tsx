@@ -29,6 +29,7 @@ const ACTION_LABELS: Record<PaymentIntegrationAuditAction, string> = {
   PINPAD_INIT: 'PinpadInit',
   PINPAD_TRANSACTION_TOTALS: 'PinpadTransactionTotals',
   PINPAD_SETTLE: 'PinpadSettle',
+  TIP_ADJUST: 'TipAdjust',
 };
 
 const IntegrationAuditModal: React.FC<IntegrationAuditModalProps> = ({ integration, onClose }) => {

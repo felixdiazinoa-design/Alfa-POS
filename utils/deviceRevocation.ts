@@ -62,12 +62,43 @@ const readDeviceIdFromPreferences = async (): Promise<string> => {
   }
 };
 
+/**
+ * Identificador estable del dispositivo físico (Android `Settings.Secure.ANDROID_ID`),
+ * expuesto por el bridge nativo `ClicPOSAppBridge.getStableDeviceId()`.
+ *
+ * Sobrevive a desinstalación/reinstalación para el mismo par (dispositivo, llave de
+ * firma, usuario). Se usa como fuente del id persistente cuando no hay ningún id
+ * previo, para que "la misma caja" pueda re-vincularse sin reautorización manual.
+ */
+const readStableDeviceId = (): string => {
+  try {
+    const bridge = (window as unknown as {
+      ClicPOSAppBridge?: { getStableDeviceId?: () => string };
+    }).ClicPOSAppBridge;
+    if (bridge && typeof bridge.getStableDeviceId === 'function') {
+      const raw = normalize(bridge.getStableDeviceId());
+      if (raw) return `ANDROID-${normalizeDeviceId(raw)}`;
+    }
+  } catch (error) {
+    console.warn('[device_identity] stable_device_id_read_failed', error);
+  }
+  return '';
+};
+
 export const resolveOrCreateLocalDeviceId = (): string => {
   const existing = resolveLocalDeviceId();
   if (existing) {
     persistLocalDeviceId(existing);
     void persistDeviceIdToPreferences(existing);
     return existing;
+  }
+
+  const stableDeviceId = readStableDeviceId();
+  if (stableDeviceId) {
+    persistLocalDeviceId(stableDeviceId);
+    void persistDeviceIdToPreferences(stableDeviceId);
+    console.info('device_id_derived_from_android_id', { deviceId: stableDeviceId });
+    return stableDeviceId;
   }
 
   const generated = `DEV-${Math.random().toString(36).substring(2, 10).toUpperCase()}`;
@@ -91,6 +122,16 @@ export const resolveOrCreatePersistentDeviceId = async (): Promise<string> => {
     await persistDeviceIdToPreferences(localDeviceId);
     console.info('device_id_restored_after_db_reset', { deviceId: localDeviceId });
     return localDeviceId;
+  }
+
+  // Instalación limpia: deriva el id del ANDROID_ID para que sobreviva a
+  // desinstalaciones (misma caja física = mismo id). Fallback al id aleatorio.
+  const stableDeviceId = readStableDeviceId();
+  if (stableDeviceId) {
+    persistLocalDeviceId(stableDeviceId);
+    await persistDeviceIdToPreferences(stableDeviceId);
+    console.info('device_id_derived_from_android_id', { deviceId: stableDeviceId });
+    return stableDeviceId;
   }
 
   const generated = `DEV-${Math.random().toString(36).substring(2, 10).toUpperCase()}`;

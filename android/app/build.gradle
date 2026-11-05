@@ -24,8 +24,8 @@ android {
         buildConfigField "boolean", "POS_DIAGNOSTICS", System.getenv("CLIC_POS_DIAGNOSTICS") == "true" ? "true" : "false"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 1373
-        versionName "1.1.373"
+        versionCode 1374
+        versionName "1.1.374"
         manifestPlaceholders = [
                 usesCleartextTraffic: "true",
                 diagnosticProfileable: System.getenv("CLIC_POS_DIAGNOSTICS") == "true" ? "true" : "false",
@@ -119,4 +119,74 @@ try {
     }
 } catch(Exception e) {
     logger.info("google-services.json not found, google-services plugin not applied. Push Notifications won't work")
+}
+
+// --- Entregables APK dentro del repositorio ---
+// Cada compilación copia su APK a <repo>/APK, así el instalable queda dentro de la
+// carpeta del proyecto y no solo en android/app/build (que Gradle limpia).
+// Los release sin keystore van a APK/unsigned/ para que nunca se confundan con un
+// instalable (Genymotion rechaza APK sin firma con "error while deploying the file").
+// El nombre del APK ya lo define el bloque applicationVariants de arriba:
+// Clic-Pos-<versionName>-<buildType>.apk
+def apkDeliverablesDir = rootProject.file('../APK')
+def apkUnsignedDir = rootProject.file('../APK/unsigned')
+
+tasks.register('collectApks') {
+    group = 'distribution'
+    description = 'Copia los APK compilados a <repo>/APK junto con su checksum SHA-256.'
+
+    doLast {
+        def failedTask = gradle.taskGraph.allTasks.find { it.state.failure != null }
+        if (failedTask != null) {
+            logger.lifecycle("[apk] La compilación falló en ${failedTask.path}; no se copian APK.")
+            return
+        }
+
+        def outputRoot = layout.buildDirectory.dir('outputs/apk').get().asFile
+        if (!outputRoot.exists()) {
+            logger.lifecycle('[apk] Todavía no hay APK compilados en app/build/outputs/apk.')
+            return
+        }
+
+        apkDeliverablesDir.mkdirs()
+
+        // Sin key.properties el APK release sale sin firmar: se aparta en APK/unsigned/.
+        def hasSigningMaterial = rootProject.file('key.properties').exists()
+
+        def copied = []
+        outputRoot.eachFileRecurse { apk ->
+            if (!apk.isFile() || !apk.name.endsWith('.apk')) {
+                return
+            }
+
+            def unsigned = !hasSigningMaterial && apk.name.contains('-release')
+            def destination = unsigned ? apkUnsignedDir : apkDeliverablesDir
+            if (unsigned) {
+                destination.mkdirs()
+                logger.lifecycle('[apk] Aviso: no hay android/key.properties; el APK release va a APK/unsigned y NO es instalable.')
+            }
+
+            def bytes = apk.bytes
+            def target = new File(destination, apk.name)
+            target.bytes = bytes
+
+            def digest = java.security.MessageDigest.getInstance('SHA-256')
+            digest.update(bytes)
+            new File(destination, "${apk.name}.sha256").text =
+                "${digest.digest().encodeHex().toString()}  ${apk.name}\n"
+
+            copied << "${unsigned ? 'unsigned/' : ''}${apk.name}"
+            logger.lifecycle("[apk] ${unsigned ? 'unsigned/' : ''}${apk.name} -> ${target}")
+        }
+
+        if (copied.isEmpty()) {
+            logger.lifecycle('[apk] No se encontraron APK para copiar.')
+        } else {
+            logger.lifecycle("[apk] ${copied.size()} APK disponible(s) en ${apkDeliverablesDir}")
+        }
+    }
+}
+
+tasks.matching { it.name == 'assembleDebug' || it.name == 'assembleRelease' }.configureEach {
+    finalizedBy('collectApks')
 }

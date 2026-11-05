@@ -36,17 +36,19 @@ const LoyaltyDashboard: React.FC<LoyaltyDashboardProps> = ({
     const loyaltyTiers = Array.isArray(config.loyalty?.tiers) && config.loyalty.tiers.length > 0
         ? config.loyalty.tiers
         : defaultLoyaltyTiers;
+    // `minPoints` es opcional en el snapshot del ERP (EGO Club deriva el nivel del gasto).
+    const minPointsOf = (tier: { minPoints?: number }) => tier.minPoints ?? 0;
 
     const currentPoints = customer.loyaltyPoints || 0;
-    const currentTierIdx = [...loyaltyTiers].findIndex(t => currentPoints < t.minPoints) === -1
+    const currentTierIdx = [...loyaltyTiers].findIndex(t => currentPoints < minPointsOf(t)) === -1
         ? loyaltyTiers.length - 1
-        : Math.max(0, [...loyaltyTiers].findIndex(t => currentPoints < t.minPoints) - 1);
+        : Math.max(0, [...loyaltyTiers].findIndex(t => currentPoints < minPointsOf(t)) - 1);
 
     const currentTier = loyaltyTiers[currentTierIdx] || defaultLoyaltyTiers[0];
     const nextTier = loyaltyTiers[currentTierIdx + 1];
 
     const progressPercent = nextTier
-        ? Math.min(100, Math.max(0, ((currentPoints - currentTier.minPoints) / (nextTier.minPoints - currentTier.minPoints)) * 100))
+        ? Math.min(100, Math.max(0, ((currentPoints - minPointsOf(currentTier)) / (minPointsOf(nextTier) - minPointsOf(currentTier) || 1)) * 100))
         : 100;
 
     return (
@@ -100,7 +102,7 @@ const LoyaltyDashboard: React.FC<LoyaltyDashboardProps> = ({
                         <div className="flex justify-center md:justify-start">
                             {nextTier ? (
                                 <p className="text-[12px] font-bold text-white/90 bg-blue-400/20 px-4 py-1.5 rounded-full inline-block">
-                                    Faltan <span className="text-yellow-300 font-black">{(nextTier.minPoints - currentPoints).toLocaleString()}</span> puntos para alcanzar el nivel <span className="text-yellow-300">{nextTier.name}</span>
+                                    Faltan <span className="text-yellow-300 font-black">{(minPointsOf(nextTier) - currentPoints).toLocaleString()}</span> puntos para alcanzar el nivel <span className="text-yellow-300">{nextTier.name}</span>
                                 </p>
                             ) : (
                                 <p className="text-yellow-300 font-black flex items-center gap-2 text-xs uppercase tracking-widest">

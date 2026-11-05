@@ -6,11 +6,16 @@ import {
    TrendingUp, TrendingDown, AlertCircle, CreditCard, History, Check,
    MessageCircle, Star, Tag, ChevronRight, ShoppingBag,
    Globe, Calendar, Map, Navigation, CheckSquare, Clock, Landmark, ShieldCheck, Zap, Gift,
-   Loader2, AlertOctagon, Printer, DollarSign, Banknote, QrCode, ArrowRightLeft
+   Loader2, AlertOctagon, Printer, DollarSign, Banknote, QrCode, ArrowRightLeft, BadgeCheck
 } from 'lucide-react';
 import { Customer, BusinessConfig, CustomerTransaction, CustomerAddress, FiscalDocumentCode, Wallet, LoyaltyCard, Transaction, User, Collection, Activity, WalletTransaction, ServiceType } from '../types';
 import { dgiiService, DGIIResponse } from '../services/dgii/DGIIValidationService';
 import { printTicket } from '../utils/printer';
+import { getTierBadgeClass, getTierLabel, isEgoClubEnabled } from '../utils/egoClub';
+import { listLoyaltyOutbox, type LoyaltyOutboxItem } from '../utils/loyaltyOutbox';
+import { flushLoyaltyOutbox, getLoyaltyChannelStatus } from '../services/loyalty/LoyaltyService';
+import EgoClubEnrollModal from './EgoClubEnrollModal';
+import EgoClubCard from './EgoClubCard';
 import AccountReceivableModal from './AccountReceivableModal';
 import CreditAccountDashboard from './CreditAccountDashboard';
 import { agendaService } from '../services/AgendaService';
@@ -86,6 +91,14 @@ const CustomerManagement: React.FC<CustomerManagementProps> = ({
 
    // Filter State
    const [filterTag, setFilterTag] = useState<string>('ALL');
+
+   // EGO Club: alta de socio y estado de la cola de envío al ERP
+   const [isEgoEnrollOpen, setIsEgoEnrollOpen] = useState(false);
+   const [isEgoCardOpen, setIsEgoCardOpen] = useState(false);
+   const [loyaltyQueue, setLoyaltyQueue] = useState<LoyaltyOutboxItem[]>([]);
+   const [isLoyaltyQueueOpen, setIsLoyaltyQueueOpen] = useState(false);
+   // El alta de socio depende del canal de lealtad del ERP (bandera + ruta publicada).
+   const egoEnrollChannel = getLoyaltyChannelStatus('/loyalty/enroll');
 
    // Form State
    const [formData, setFormData] = useState<Partial<Customer>>({});
@@ -363,6 +376,18 @@ const CustomerManagement: React.FC<CustomerManagementProps> = ({
    }, [searchTerm, customers, normalizeCustomerNcfType]);
 
    // --- HANDLERS ---
+
+   const refreshLoyaltyQueue = useCallback(async () => {
+      try {
+         setLoyaltyQueue(await listLoyaltyOutbox());
+      } catch (error) {
+         console.warn('[EGO CLUB] no se pudo leer la cola local:', error);
+      }
+   }, []);
+
+   useEffect(() => {
+      void refreshLoyaltyQueue();
+   }, [refreshLoyaltyQueue]);
 
    const handleCreateClick = () => {
       setSelectedCustomerId(null);
@@ -1050,6 +1075,29 @@ const CustomerManagement: React.FC<CustomerManagementProps> = ({
                </h1>
             </div>
             <div className="flex gap-2">
+               {isEgoClubEnabled(config) && loyaltyQueue.some(item => item.status !== 'SYNCED') && (
+                  <button
+                     onClick={() => setIsLoyaltyQueueOpen(prev => !prev)}
+                     className="px-3 py-2.5 rounded-xl font-bold bg-amber-50 text-amber-700 border border-amber-200 flex items-center gap-2 text-xs"
+                     title="Altas de socio pendientes de enviar al ERP"
+                  >
+                     <Clock size={16} />
+                     {loyaltyQueue.filter(item => item.status === 'PENDING').length} en cola
+                  </button>
+               )}
+               {isEgoClubEnabled(config) && (
+                  <button
+                     onClick={() => setIsEgoEnrollOpen(true)}
+                     disabled={!egoEnrollChannel.enabled}
+                     title={egoEnrollChannel.enabled ? 'Alta de socio EGO Club' : (egoEnrollChannel.reason || 'Alta no disponible en esta caja')}
+                     className="px-4 py-2.5 rounded-xl font-bold bg-gray-900 text-white shadow-lg flex items-center gap-2 active:scale-95 transition-all disabled:bg-gray-300 disabled:shadow-none"
+                  >
+                     <BadgeCheck size={18} /> Alta EGO Club
+                     {!egoEnrollChannel.enabled && (
+                        <span className="text-[10px] font-black uppercase tracking-wide text-gray-600">no disponible</span>
+                     )}
+                  </button>
+               )}
                {onSelect && selectedCustomer && (
                   <button
                      onClick={() => onSelect(selectedCustomer)}
@@ -1066,6 +1114,36 @@ const CustomerManagement: React.FC<CustomerManagementProps> = ({
                </button>
             </div>
          </header>
+
+         {isLoyaltyQueueOpen && (
+            <div className="px-6 py-3 bg-amber-50 border-b border-amber-200 shrink-0 max-h-48 overflow-y-auto">
+               <div className="flex items-center justify-between mb-1">
+                  <p className="text-[11px] font-black uppercase tracking-wide text-amber-800">
+                     Altas de socio en cola local (se envían al ERP al reconectar)
+                  </p>
+                  <button
+                     onClick={async () => { await flushLoyaltyOutbox(); await refreshLoyaltyQueue(); }}
+                     className="text-[11px] font-black text-amber-800 underline"
+                  >
+                     Reintentar ahora
+                  </button>
+               </div>
+               <ul className="space-y-1">
+                  {loyaltyQueue.map(item => (
+                     <li key={item.id} className="flex items-center justify-between gap-3 text-[11px] font-bold text-gray-700">
+                        <span className="truncate">{item.reference || item.id}</span>
+                        <span className={`px-2 py-0.5 rounded-full uppercase tracking-wide ${
+                           item.status === 'SYNCED' ? 'bg-emerald-100 text-emerald-700'
+                              : item.status === 'FAILED' ? 'bg-red-100 text-red-700'
+                                 : 'bg-amber-200 text-amber-900'
+                        }`}>
+                           {item.status === 'SYNCED' ? 'enviado' : item.status === 'FAILED' ? 'fallido' : 'pendiente'}
+                        </span>
+                     </li>
+                  ))}
+               </ul>
+            </div>
+         )}
 
          {/* MAIN CONTENT SPLIT */}
          <div className="flex-1 overflow-hidden flex">
@@ -1251,12 +1329,14 @@ const CustomerManagement: React.FC<CustomerManagementProps> = ({
                                  <div>
                                     <h2 className="text-2xl font-black text-gray-900 leading-tight">{selectedCustomer.name}</h2>
                                     <div className="flex items-center gap-2 mt-1">
-                                       <span className={`px-2 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wide border ${selectedCustomer.tier === 'GOLD' ? 'bg-amber-100 text-amber-700 border-amber-200' :
-                                          selectedCustomer.tier === 'SILVER' ? 'bg-slate-100 text-slate-700 border-slate-200' :
-                                             'bg-orange-50 text-orange-700 border-orange-200'
-                                          }`}>
-                                          {selectedCustomer.tier || 'BRONZE'} MEMBER
-                                       </span>
+                                       {/* Nivel EGO Club resuelto por el ERP. Si el cliente no tiene
+                                           membresía no se muestra nada: antes se etiquetaba como
+                                           "BRONZE MEMBER", que inventaba un nivel inexistente. */}
+                                       {isEgoClubEnabled(config) && getTierLabel(config, selectedCustomer.tier) && (
+                                          <span className={`px-2 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wide border ${getTierBadgeClass(selectedCustomer.tier)}`}>
+                                             {getTierLabel(config, selectedCustomer.tier)}
+                                          </span>
+                                       )}
                                        {selectedCustomer.tags?.map(tag => (
                                           <span key={tag} className="text-[10px] font-bold text-gray-400">#{tag}</span>
                                        ))}
@@ -1270,6 +1350,15 @@ const CustomerManagement: React.FC<CustomerManagementProps> = ({
 
                               {/* Actions */}
                               <div className="flex gap-2 w-full md:w-auto">
+                                 {isEgoClubEnabled(config) && (
+                                    <button
+                                       onClick={() => setIsEgoCardOpen(true)}
+                                       className="flex-1 md:flex-none py-2 px-4 bg-slate-900 text-white rounded-xl font-black text-sm shadow-lg hover:bg-slate-800 transition-all flex items-center justify-center gap-2"
+                                       title="Tarjeta digital del socio"
+                                    >
+                                       <BadgeCheck size={18} /> <span className="hidden lg:inline">Tarjeta EGO Club</span>
+                                    </button>
+                                 )}
                                  {onSelect && (
                                     <button
                                        onClick={() => onSelect(selectedCustomer)}
@@ -2366,6 +2455,23 @@ const CustomerManagement: React.FC<CustomerManagementProps> = ({
                      fetchActivities();
                   }
                }}
+            />
+         )}
+
+         {isEgoEnrollOpen && (
+            <EgoClubEnrollModal
+               config={config}
+               onClose={() => setIsEgoEnrollOpen(false)}
+               onEnrolled={() => { void refreshLoyaltyQueue(); }}
+            />
+         )}
+
+         {isEgoCardOpen && selectedCustomer && (
+            <EgoClubCard
+               config={config}
+               customer={selectedCustomer}
+               currencySymbol={config.currencySymbol || 'RD$'}
+               onClose={() => setIsEgoCardOpen(false)}
             />
          )}
       </div>

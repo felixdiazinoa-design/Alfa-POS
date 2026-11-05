@@ -375,6 +375,31 @@ const promotionMatchesCategoryTarget = (promotion: Promotion, product: any): boo
     || (Array.isArray(promotion.targetRefs) && promotion.targetRefs.some((ref) => productMatchesCategory(product, ref)))
 );
 
+/**
+ * Coincide `promotion.targetRefs` contra los refs de la variante de la línea
+ * (SKU, id de variante y código de barra), sin exigir `targetValue`.
+ */
+const variantLineMatchesResolvedRefs = (promotion: Promotion, item: CartItem): boolean => {
+    const targetRefs = Array.isArray(promotion.targetRefs) ? promotion.targetRefs : [];
+    if (targetRefs.length === 0) return false;
+    const normalizedTargets = new Set(targetRefs.map(normalizeVariantToken).filter(Boolean));
+    if (normalizedTargets.size === 0) return false;
+    return collectVariantLineReferences(item).some(ref => normalizedTargets.has(normalizeVariantToken(ref.value)));
+};
+
+/**
+ * Objetivo BRAND (EGO Club T1): el ERP hidrata `targetRefs` con los ids/SKUs/códigos
+ * de todos los ítems de la marca; como respaldo se compara `brandId`/`brand_id`.
+ */
+const promotionMatchesBrandTarget = (promotion: Promotion, product: any): boolean => {
+    if (promotionMatchesResolvedRefs(promotion, product)) return true;
+    if (variantLineMatchesResolvedRefs(promotion, product)) return true;
+    const brand = normalizeMatchToken(product?.brandId ?? product?.brand_id);
+    if (!brand) return false;
+    return brand === normalizeMatchToken(promotion.targetValue)
+        || brand === normalizeMatchToken(promotion.targetLabel);
+};
+
 const productBelongsToReferenceGroup = (product: any, productIds?: unknown[]): boolean => (
     productMatchesReferenceList(product, Array.isArray(productIds) ? productIds : [])
 );
@@ -515,12 +540,44 @@ const promotionMatchesDateRange = (promotion: Promotion): boolean => {
     return true;
 };
 
+/** Normaliza el nivel del cliente a la forma que usa el ERP ("GOLD", "BLACK", "STANDARD"). */
+export const normalizeLoyaltyTier = (value: unknown): string | null => {
+    if (value === null || value === undefined) return null;
+    const text = String(value).trim().toUpperCase();
+    return text.length > 0 ? text : null;
+};
+
+/** Niveles declarados en la audiencia de la promoción, normalizados. */
+const promotionAudienceTiers = (promo: Promotion): string[] => {
+    const tiers = promo.audience?.tiers;
+    if (!Array.isArray(tiers)) return [];
+    return tiers.map(tier => normalizeLoyaltyTier(tier)).filter((tier): tier is string => tier !== null);
+};
+
+/**
+ * Audiencia por nivel EGO Club (T2).
+ *
+ * Sin `audience.tiers` (o con la lista vacía) la promoción aplica a todos. Con
+ * audiencia declarada y ticket sin cliente identificado NO aplica: no se asume
+ * STANDARD por defecto.
+ */
+export const promotionMatchesAudience = (promo: Promotion, customer?: Customer): boolean => {
+    const tiers = promotionAudienceTiers(promo);
+    if (tiers.length === 0) return true;
+
+    const customerTier = normalizeLoyaltyTier(customer?.tier);
+    if (!customerTier) return false;
+
+    return tiers.includes(customerTier);
+};
+
 const promotionIsCurrentlyEligible = (promotion: Promotion, config: BusinessConfig, terminalId: string, customer?: Customer): boolean => {
     if (!isPromotionActive(promotion)) return false;
     if (!promotionMatchesCurrentDay(promotion)) return false;
     if (!promotionMatchesCurrentTime(promotion)) return false;
     if (!promotionMatchesDateRange(promotion)) return false;
     if (!promotionMatchesTerminalScope(promotion, config, terminalId)) return false;
+    if (!promotionMatchesAudience(promotion, customer)) return false;
 
     if (promotion.conditions && promotion.conditions.length > 0) {
         for (const condition of promotion.conditions) {
@@ -536,7 +593,12 @@ const promotionIsCurrentlyEligible = (promotion: Promotion, config: BusinessConf
 const promotionTargetsProduct = (promotion: Promotion, product: any, config: BusinessConfig): boolean => {
     if (promotion.targetType === 'ALL') return true;
     if (promotion.targetType === 'PRODUCT') return promotionMatchesTargetReference(promotion, product);
-    if (promotion.targetType === 'VARIANT') return Boolean(resolveVariantPromotionMatch(promotion, product));
+    if (promotion.targetType === 'VARIANT') {
+        // Semántica de develop (parent product + variante) y respaldo de EGO Club T1:
+        // sin `targetValue`, coincide por `targetRefs` contra los refs de la variante.
+        return Boolean(resolveVariantPromotionMatch(promotion, product)) || variantLineMatchesResolvedRefs(promotion, product);
+    }
+    if (promotion.targetType === 'BRAND') return promotionMatchesBrandTarget(promotion, product);
     if (promotion.targetType === 'CATEGORY') return promotionMatchesCategoryTarget(promotion, product);
 
     if (promotion.targetType === 'GROUP') {
@@ -553,6 +615,11 @@ const promotionTargetsProduct = (promotion: Promotion, product: any, config: Bus
 
     return false;
 };
+
+/** Compatibilidad con el contrato de EGO Club (T1): una línea participa del objetivo. */
+export const itemMatchesPromotionTarget = (promo: Promotion, item: CartItem, config: BusinessConfig): boolean => (
+    promotionTargetsProduct(promo, item, config)
+);
 
 const isPromotionActive = (promotion: Promotion): boolean => promotion.schedule?.isActive !== false;
 
@@ -833,10 +900,10 @@ export const applyPromotions = (cart: CartItem[], config: BusinessConfig, termin
  * Checks if a product has any active promotion applicable.
  * Used for UI badges.
  */
-export const hasProductPromotion = (product: any, config: BusinessConfig, terminalId: string): boolean => {
+export const hasProductPromotion = (product: any, config: BusinessConfig, terminalId: string, customer?: Customer): boolean => {
     if (!config.promotions) return false;
 
-    const activePromotions = config.promotions.filter(p => promotionIsCurrentlyEligible(p, config, terminalId));
+    const activePromotions = config.promotions.filter(p => promotionIsCurrentlyEligible(p, config, terminalId, customer));
 
     // 2. Check if any active promotion targets this product
     return activePromotions.some(p => {

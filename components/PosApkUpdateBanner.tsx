@@ -17,6 +17,13 @@ const PosApkUpdateBanner: React.FC<PosApkUpdateBannerProps> = ({ update, onDownl
   const availableVersion = `${update.release.version_name} (${update.release.version_code})`;
   const changelog = update.release.changelog?.trim();
   const canDownload = Boolean(update.release.direct_download_url || update.release.apk_url);
+  const sourceHost = (() => {
+    try {
+      return new URL(update.endpointUrl).host;
+    } catch {
+      return '';
+    }
+  })();
 
   return (
     <aside className="fixed bottom-4 left-4 right-4 z-[10000] mx-auto max-w-[460px] rounded-2xl border border-sky-200 bg-white shadow-[0_20px_60px_rgba(15,23,42,0.20)] sm:left-auto sm:mx-0">
@@ -32,6 +39,9 @@ const PosApkUpdateBanner: React.FC<PosApkUpdateBannerProps> = ({ update, onDownl
               <p className="mt-1 text-sm font-bold text-slate-600">
                 Actual: {currentVersion} · Disponible: {availableVersion}
               </p>
+              {sourceHost && (
+                <p className="mt-1 text-[11px] font-semibold text-slate-400">Origen: {sourceHost}</p>
+              )}
             </div>
             <button
               type="button"

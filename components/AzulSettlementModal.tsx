@@ -12,8 +12,9 @@ import {
 import { PaymentIntegrationDefinition } from '../types';
 import { AzulNormalizedResult } from '../services/payments/AzulMcmService';
 import { IngenicoAzulWebApiNormalizedResult } from '../services/payments/IngenicoAzulWebApiService';
+import { CardNetEcrNormalizedResult } from '../services/payments/CardNetEcrService';
 
-type TerminalSettlementResult = AzulNormalizedResult | IngenicoAzulWebApiNormalizedResult;
+type TerminalSettlementResult = AzulNormalizedResult | IngenicoAzulWebApiNormalizedResult | CardNetEcrNormalizedResult;
 
 interface AzulSettlementModalProps {
   integration: PaymentIntegrationDefinition;
