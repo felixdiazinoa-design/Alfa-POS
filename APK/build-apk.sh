@@ -6,6 +6,12 @@
 #   ./APK/build-apk.sh debug        # igual que arriba
 #   ./APK/build-apk.sh release      # APK release (requiere firma para instalar)
 #   ./APK/build-apk.sh debug --skip-web   # reutiliza dist/ y android assets ya generados
+#   ./APK/build-apk.sh release --no-bump  # no incrementa versionCode/versionName
+#
+# Por defecto cada compilación incrementa el secuencial: versionCode +1 y el
+# patch de versionName en paralelo (1374/1.1.374 → 1375/1.1.375), para que
+# ninguna release reutilice el identificador anterior. Usa --no-bump solo para
+# reintentar un build que ya consumió su número.
 #
 # Salidas:
 #   APK/Clic-Pos-<versionName>-debug.apk          (+ .sha256)
@@ -20,9 +26,11 @@ REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
 VARIANT="${1:-debug}"
 SKIP_WEB="false"
+BUMP_VERSION="true"
 for arg in "$@"; do
   case "${arg}" in
     --skip-web) SKIP_WEB="true" ;;
+    --no-bump) BUMP_VERSION="false" ;;
   esac
 done
 
@@ -55,6 +63,55 @@ run() {
     exit 1
   fi
 }
+
+# Secuencial por compilación: versionCode +1 y patch de versionName en paralelo.
+# Convención histórica del repo: 1374 ↔ 1.1.374 (name = "1.1." + code-1000).
+GRADLE_FILE="${REPO_ROOT}/android/app/build.gradle"
+
+bump_version() {
+  local current_code current_name next_code next_name
+  [[ -f "${GRADLE_FILE}" ]] || { echo "ERROR: no existe ${GRADLE_FILE}" >&2; exit 1; }
+
+  current_code="$(awk '/versionCode[[:space:]]+[0-9]+/ { print $2; exit }' "${GRADLE_FILE}")"
+  current_name="$(sed -n 's/.*versionName[[:space:]]*"\([^"]*\)".*/\1/p' "${GRADLE_FILE}" | head -1)"
+  [[ "${current_code}" =~ ^[0-9]+$ ]] || { echo "ERROR: no pude leer versionCode" >&2; exit 1; }
+
+  next_code=$((current_code + 1))
+  if (( next_code > 1000 && next_code < 2000 )); then
+    next_name="1.1.$((next_code - 1000))"
+  else
+    # Fuera de la convención 1xxx: incrementa el último segmento numérico.
+    next_name="$(awk -v n="${current_name}" 'BEGIN {
+      split(n, parts, ".")
+      last = parts[length(parts)] + 0
+      parts[length(parts)] = last + 1
+      out = parts[1]
+      for (i = 2; i <= length(parts); i++) out = out "." parts[i]
+      print out
+    }')"
+  fi
+
+  node --input-type=module -e '
+    import fs from "node:fs";
+    const [file, code, name] = process.argv.slice(1);
+    let source = fs.readFileSync(file, "utf8");
+    source = source.replace(/versionCode\s+\d+/, `versionCode ${code}`);
+    source = source.replace(/versionName\s+"[^"]+"/, `versionName "${name}"`);
+    fs.writeFileSync(file, source);
+  ' "${GRADLE_FILE}" "${next_code}" "${next_name}" || {
+    echo "ERROR: no pude escribir la versión en ${GRADLE_FILE}" >&2
+    exit 1
+  }
+
+  info "Secuencial: ${current_name} (${current_code}) → ${next_name} (${next_code})"
+  echo "${next_code}" > "${SCRIPT_DIR}/.last-version-code"
+}
+
+if [[ "${BUMP_VERSION}" == "true" ]]; then
+  bump_version
+else
+  info "Sin incremento de versión (--no-bump): se reutiliza el secuencial actual."
+fi
 
 cd "${REPO_ROOT}"
 
