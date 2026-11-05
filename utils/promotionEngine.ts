@@ -584,10 +584,44 @@ const promotionIsCurrentlyEligible = (promotion: Promotion, config: BusinessConf
             if (condition.type === 'HAS_WALLET' && (!customer || !customer.wallet || customer.wallet.status !== 'ACTIVE')) return false;
             if (condition.type === 'CUSTOMER_TIER' && (!customer || customer.tier !== condition.value)) return false;
             if (condition.type === 'HAS_POINTS_MIN' && (!customer || (customer.loyaltyPoints || 0) < parseInt(condition.value, 10))) return false;
+            // MIN_QUANTITY se evalúa por línea en `promotionMeetsQuantityRule`.
         }
     }
 
     return true;
+};
+
+/**
+ * Reglas de cantidad mínima.
+ *
+ * El POS no tenía forma de expresar promociones como "segundo par 30%": solo
+ * condiciones de cliente. Si el ERP no declara la cantidad, la promoción se
+ * aplica desde la primera unidad (comportamiento anterior, sin cambios).
+ *
+ * Se aceptan las claves habituales del ERP para no atarse a una sola forma.
+ */
+const resolvePromotionMinQuantity = (promotion: Promotion): number => {
+    const rawTrigger = promotion.triggerConfig ?? promotion.trigger_config;
+    const trigger: Record<string, unknown> = rawTrigger && typeof rawTrigger === 'object' && !Array.isArray(rawTrigger)
+        ? rawTrigger as Record<string, unknown>
+        : {};
+    const candidates = [
+        trigger.minQuantity, trigger.min_quantity, trigger.minUnits, trigger.min_units,
+        trigger.quantity, trigger.bundleSize, trigger.bundle_size,
+    ];
+    for (const candidate of candidates) {
+        const value = Number(candidate);
+        if (Number.isFinite(value) && value > 0) return Math.floor(value);
+    }
+    const condition = (promotion.conditions || []).find(entry => entry?.type === 'MIN_QUANTITY');
+    const fromCondition = Number(condition?.value);
+    return Number.isFinite(fromCondition) && fromCondition > 0 ? Math.floor(fromCondition) : 0;
+};
+
+const promotionMeetsQuantityRule = (promotion: Promotion, item: CartItem): boolean => {
+    const minQuantity = resolvePromotionMinQuantity(promotion);
+    if (minQuantity <= 0) return true;
+    return Math.abs(Number(item.quantity) || 0) >= minQuantity;
 };
 
 const promotionTargetsProduct = (promotion: Promotion, product: any, config: BusinessConfig): boolean => {
@@ -638,7 +672,8 @@ export const applyPromotions = (cart: CartItem[], config: BusinessConfig, termin
     processedCart = processedCart.map(item => {
         // Find ALL applicable promotions for this item
         const applicablePromos = activePromotions.filter(p => {
-            return promotionAppliesToCartItem(p, item, config);
+            if (!promotionAppliesToCartItem(p, item, config)) return false;
+            return promotionMeetsQuantityRule(p, item);
         });
 
         if (

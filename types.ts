@@ -2171,7 +2171,7 @@ export interface PromotionApplicationTrace {
 }
 
 export interface PromotionCondition {
-  type: 'HAS_WALLET' | 'CUSTOMER_TIER' | 'HAS_POINTS_MIN';
+  type: 'HAS_WALLET' | 'CUSTOMER_TIER' | 'HAS_POINTS_MIN' | 'MIN_QUANTITY';
   value: string; // "GOLD", "100", "TRUE"
 }
 
