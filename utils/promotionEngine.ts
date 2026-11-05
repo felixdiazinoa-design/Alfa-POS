@@ -665,6 +665,17 @@ export const applyPromotions = (cart: CartItem[], config: BusinessConfig, termin
     // Clone cart to avoid mutation
     let processedCart = cart.map(item => ({ ...item }));
 
+    // Promociones con regla de cantidad ("segundo par 30%"): el umbral se mide
+    // sobre el ticket completo, no por línea, y se aplican una sola vez.
+    const cartUnitsForPromotion = (promo: Promotion): number => (
+        processedCart.reduce((sum, item) => {
+            if (Math.abs(Number(item.quantity) || 0) === 0) return sum;
+            if (!promotionAppliesToCartItem(promo, item, config)) return sum;
+            return sum + Math.abs(Number(item.quantity) || 0);
+        }, 0)
+    );
+    const consumedQuantityPromotions = new Set<string>();
+
     // Apply Promotions
     // Priority: We apply the first matching promotion for simplicity in this prototype.
     // In a real system, we might want "Best Offer" logic or "Stackable" flags.
@@ -673,7 +684,10 @@ export const applyPromotions = (cart: CartItem[], config: BusinessConfig, termin
         // Find ALL applicable promotions for this item
         const applicablePromos = activePromotions.filter(p => {
             if (!promotionAppliesToCartItem(p, item, config)) return false;
-            return promotionMeetsQuantityRule(p, item);
+            const minQuantity = resolvePromotionMinQuantity(p);
+            if (minQuantity <= 0) return promotionMeetsQuantityRule(p, item);
+            if (consumedQuantityPromotions.has(p.id)) return false;
+            return cartUnitsForPromotion(p) >= minQuantity;
         });
 
         if (
@@ -785,6 +799,12 @@ export const applyPromotions = (cart: CartItem[], config: BusinessConfig, termin
         // If we found a promo that lowers the price, use it. 
         // If no promo lowers the price (e.g. BOGO with qty 1), we stick with original.
         const applicablePromo = bestPromo || topTierPromos[0]; // Fallback to first if none lower price (or all equal)
+
+        // Si la promoción exige cantidad, queda consumida: solo una línea del
+        // ticket recibe el beneficio (el "segundo par", no los dos pares).
+        if (resolvePromotionMinQuantity(applicablePromo) > 0) {
+            consumedQuantityPromotions.add(applicablePromo.id);
+        }
 
         let newPrice = promotionBasePrice;
 
