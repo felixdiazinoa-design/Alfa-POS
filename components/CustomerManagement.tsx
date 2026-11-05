@@ -1353,7 +1353,7 @@ const CustomerManagement: React.FC<CustomerManagementProps> = ({
                                  {isEgoClubEnabled(config) && (
                                     <button
                                        onClick={() => setIsEgoCardOpen(true)}
-                                       className="flex-1 md:flex-none py-2 px-4 bg-slate-900 text-white rounded-xl font-black text-sm shadow-lg hover:bg-slate-800 transition-all flex items-center justify-center gap-2"
+                                       className="flex-1 md:flex-none py-2 px-4 rounded-xl border border-[#132124] bg-white text-[#132124] font-black text-sm hover:bg-[#F4F7F6] transition-all flex items-center justify-center gap-2"
                                        title="Tarjeta digital del socio"
                                     >
                                        <BadgeCheck size={18} /> <span className="hidden lg:inline">Tarjeta EGO Club</span>
@@ -1362,12 +1362,12 @@ const CustomerManagement: React.FC<CustomerManagementProps> = ({
                                  {onSelect && (
                                     <button
                                        onClick={() => onSelect(selectedCustomer)}
-                                       className="flex-1 md:flex-none py-2 px-6 bg-emerald-600 text-white rounded-xl font-black text-sm shadow-lg shadow-emerald-100 hover:bg-emerald-700 transition-all flex items-center justify-center gap-2"
+                                       className="flex-1 md:flex-none py-2 px-6 rounded-xl bg-[#00A7A0] text-white font-black text-sm shadow-[0_14px_28px_-18px_rgba(0,167,160,0.95)] hover:bg-[#00877F] transition-all flex items-center justify-center gap-2"
                                     >
                                        <Check size={18} /> Asignar al Ticket
                                     </button>
                                  )}
-                                 <button onClick={handleWhatsApp} className="flex-1 md:flex-none py-2 px-4 bg-green-50 text-green-600 rounded-xl font-bold text-sm hover:bg-green-100 transition-colors flex items-center justify-center gap-2">
+                                 <button onClick={handleWhatsApp} title="Escribir por WhatsApp" className="flex-1 md:flex-none py-2 px-3 rounded-xl border border-[#E1E9E8] bg-white text-[#4A615F] font-bold text-sm hover:border-[#00A7A0] hover:text-[#00877F] transition-colors flex items-center justify-center gap-2">
                                     <MessageCircle size={18} /> <span className="hidden lg:inline">WhatsApp</span>
                                  </button>
                                  <button onClick={handleEditClick} className="p-2 border border-gray-200 rounded-xl hover:bg-gray-50 text-gray-500 transition-colors">
@@ -1379,49 +1379,45 @@ const CustomerManagement: React.FC<CustomerManagementProps> = ({
                               </div>
                            </div>
 
-                           {/* FISCAL PREVIEW SECTION (Destacada en la ficha) */}
-                           <div className="mt-8 p-4 bg-blue-50/50 rounded-2xl border border-blue-100 grid grid-cols-1 md:grid-cols-2 gap-4">
-                              <div className="flex items-center gap-3">
-                                 <div className="p-2 bg-blue-600 text-white rounded-xl shadow-md">
-                                    <Landmark size={20} />
-                                 </div>
-                                 <div>
-                                    <p className="text-[10px] font-black text-blue-400 uppercase tracking-widest leading-none mb-1">Comprobante Fiscal</p>
-                                    <p className="text-sm font-black text-blue-900">{isFiscalModeDisabled ? 'Sin comprobantes' : (selectedCustomer.defaultNcfType || 'Consumo (B02)')}</p>
-                                 </div>
-                              </div>
-                              <div className="flex items-center gap-3 border-l md:border-l border-blue-100 md:pl-6">
-                                 <div className="p-2 bg-white text-blue-600 rounded-xl border border-blue-200">
-                                    <FileText size={20} />
-                                 </div>
-                                 <div>
-                                    <p className="text-[10px] font-black text-blue-400 uppercase tracking-widest leading-none mb-1">RNC / Cédula</p>
-                                    <p className="text-sm font-mono font-bold text-blue-900">{selectedCustomer.taxId || 'No registrado'}</p>
-                                 </div>
-                              </div>
+                           {/* Datos fiscales como chips compactos: antes ocupaban una
+                               franja completa y competían con las métricas. */}
+                           <div className="mt-5 flex flex-wrap items-center gap-2">
+                              <span
+                                 title="Comprobante fiscal por defecto del cliente"
+                                 className="inline-flex items-center gap-2 rounded-xl border border-[#DCE7E6] bg-[#F4F7F6] px-3 py-1.5 text-[11px] font-black uppercase tracking-wide text-[#1B3034]"
+                              >
+                                 <Landmark size={13} className="text-[#00877F]" />
+                                 {isFiscalModeDisabled ? 'Sin comprobantes' : (selectedCustomer.defaultNcfType || 'Consumo (B02)')}
+                              </span>
+                              <span
+                                 title="RNC o cédula registrados"
+                                 className="inline-flex items-center gap-2 rounded-xl border border-[#DCE7E6] bg-white px-3 py-1.5 text-[11px] font-bold text-[#1B3034]"
+                              >
+                                 <FileText size={13} className="text-[#6C7F80]" />
+                                 <span className="font-mono">{selectedCustomer.taxId || 'Sin RNC / cédula'}</span>
+                              </span>
                            </div>
 
-                           {/* Mini Stats (Financial Summary Header) */}
-                           <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mt-8 pt-6 border-t border-gray-100">
-                              <div>
-                                 <p className="text-xs text-gray-400 font-bold uppercase tracking-wider mb-1">Total Gastado</p>
-                                 <p className="text-xl font-black text-gray-800">{config.currencySymbol}{formatMoney(selectedCustomer.totalSpent)}</p>
+                           {/* Métricas financieras en una sola línea, con importes
+                               tabulares para que se comparen de un vistazo. */}
+                           <div className="mt-5 grid grid-cols-2 gap-2 md:grid-cols-4">
+                              <div className="rounded-xl border border-[#E1E9E8] bg-white px-3 py-2">
+                                 <p className="text-[9px] font-black uppercase tracking-[0.14em] text-[#9DAEAD]">Gastado</p>
+                                 <p className="mt-0.5 text-base font-black text-[#132124] tabular-nums">{config.currencySymbol}{formatMoney(selectedCustomer.totalSpent)}</p>
                               </div>
-                              <div>
-                                 <p className="text-xs text-gray-400 font-bold uppercase tracking-wider mb-1">Deuda Actual</p>
-                                 <p className="text-xl font-black text-red-500">
+                              <div className="rounded-xl border border-[#E1E9E8] bg-white px-3 py-2">
+                                 <p className="text-[9px] font-black uppercase tracking-[0.14em] text-[#9DAEAD]">Deuda</p>
+                                 <p className={`mt-0.5 text-base font-black tabular-nums ${toSafeNumber(selectedCustomer.currentDebt) > 0 ? 'text-[#C0392B]' : 'text-[#132124]'}`}>
                                     {config.currencySymbol}{formatMoney(selectedCustomer.currentDebt)}
                                  </p>
                               </div>
-                              <div>
-                                 <p className="text-xs text-gray-400 font-bold uppercase tracking-wider mb-1">Saldo a Favor / Anticipos</p>
-                                 <p className="text-xl font-black text-emerald-500">
-                                    {config.currencySymbol}{formatMoney(selectedCustomer.wallet?.balance)}
-                                 </p>
+                              <div className="rounded-xl border border-[#E1E9E8] bg-white px-3 py-2">
+                                 <p className="text-[9px] font-black uppercase tracking-[0.14em] text-[#9DAEAD]">A favor</p>
+                                 <p className="mt-0.5 text-base font-black text-[#00877F] tabular-nums">{config.currencySymbol}{formatMoney(selectedCustomer.wallet?.balance)}</p>
                               </div>
-                              <div className="md:border-l md:pl-6">
-                                 <p className="text-xs text-gray-400 font-bold uppercase tracking-wider mb-1">Total Neto</p>
-                                 <p className={`text-xl font-black ${(toSafeNumber(selectedCustomer.wallet?.balance) - toSafeNumber(selectedCustomer.currentDebt)) >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>
+                              <div className="rounded-xl border border-[#DCEBD0] bg-[#F5FBEA] px-3 py-2">
+                                 <p className="text-[9px] font-black uppercase tracking-[0.14em] text-[#7A8C4A]">Neto</p>
+                                 <p className={`mt-0.5 text-base font-black tabular-nums ${(toSafeNumber(selectedCustomer.wallet?.balance) - toSafeNumber(selectedCustomer.currentDebt)) >= 0 ? 'text-[#4C6B12]' : 'text-[#C0392B]'}`}>
                                     {config.currencySymbol}{formatMoney(toSafeNumber(selectedCustomer.wallet?.balance) - toSafeNumber(selectedCustomer.currentDebt))}
                                  </p>
                               </div>
