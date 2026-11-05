@@ -11,15 +11,17 @@ contra el código del POS el 2026-11-04.
 
 ## Contexto
 
-- POS = APK Android (Capacitor, WebView). Compila `1.1.373` / `versionCode 1373`,
-  el **primer** APK de ALFA-Admin.
+- POS = APK Android (Capacitor, WebView). Compila `1.1.374` / `versionCode 1374`
+  (la `1.1.373` fue el **primer** APK de ALFA-Admin).
 - El POS consulta el registro de APK **al arrancar** (timeout 3.5 s) y desde
   Configuración ("Buscar actualización", timeout 5 s).
 - Hasta ahora el POS consultaba Cloud-Admin (`cloud-admin.clicsuite.com`), que
   publica `1.1.405` (1405): por eso una caja recién compilada ofrecía
   "nueva versión disponible" contra otro panel. El POS ya fue reconfigurado para
-  usar ALFA-Admin (`VITE_ALFA_ADMIN_BASE_URL`), pero **ALFA-Admin todavía no
-  publica ningún release**.
+  usar ALFA-Admin (`VITE_ALFA_ADMIN_BASE_URL`).
+  Estado 2026-11-05: la fila vigente (`1.1.373`) sí existe, pero apunta a
+  `alfa-admin-eta` (404). El PR `chore/pos-apk-1.1.374` de ALFA-Admin publica la
+  `1.1.374` en `alfa-admin-nine` y repunta las filas antiguas.
 
 ## 1. Obligatorio — `GET /api/pos-apk/latest`
 
