@@ -348,11 +348,19 @@ const terminalReferenceCandidates = (config: BusinessConfig, terminalId: string)
 };
 
 const promotionMatchesTerminalScope = (promotion: Promotion, config: BusinessConfig, terminalId: string): boolean => {
-    if (!Array.isArray(promotion.terminalIds) || promotion.terminalIds.length === 0 || !terminalId) {
+    // El ERP puede enviar el alcance como `terminalIds` o `terminal_ids`. Al leer
+    // solo la forma camelCase, una promoción limitada a una caja se aplicaba en
+    // todas (se veía como "aplica a todas" sin serlo).
+    const scope = (promotion as unknown as { terminal_ids?: unknown }).terminal_ids;
+    const declared = Array.isArray(promotion.terminalIds) && promotion.terminalIds.length > 0
+        ? promotion.terminalIds
+        : (Array.isArray(scope) ? scope as unknown[] : []);
+
+    if (declared.length === 0 || !terminalId) {
         return true;
     }
 
-    const promotionTerminalIds = new Set(asReferenceList(promotion.terminalIds).map(normalizeMatchToken));
+    const promotionTerminalIds = new Set(asReferenceList(declared).map(normalizeMatchToken));
 
     return terminalReferenceCandidates(config, terminalId).some((candidate) => promotionTerminalIds.has(normalizeMatchToken(candidate)));
 };
@@ -618,6 +626,31 @@ const resolvePromotionMinQuantity = (promotion: Promotion): number => {
     return Number.isFinite(fromCondition) && fromCondition > 0 ? Math.floor(fromCondition) : 0;
 };
 
+/**
+ * Regla "Segundo par" del ERP.
+ *
+ * No es un descuento plano: con N pares elegibles descuenta floor(N/2) pares,
+ * empezando por los más baratos, y exige un mínimo de pares (2 por defecto).
+ * El POS la estaba tratando como DISCOUNT%, así que rebajaba todas las líneas.
+ */
+const SECOND_PAIR_RULE_KEYS = new Set(['SEGUNDO_PAR', 'SEGUNDO PAR', 'SECOND_PAIR', 'SECOND PAIR', 'SECOND_UNIT']);
+
+const resolveSecondPairRule = (promotion: Promotion): { minPairs: number } | null => {
+    const rawTrigger = promotion.triggerConfig ?? promotion.trigger_config;
+    const trigger: Record<string, unknown> = rawTrigger && typeof rawTrigger === 'object' && !Array.isArray(rawTrigger)
+        ? rawTrigger as Record<string, unknown>
+        : {};
+    const ruleTokens = [
+        String((promotion as unknown as { type?: unknown }).type ?? ''),
+        String(trigger.rule ?? ''),
+        String(trigger.ruleType ?? ''),
+        String(trigger.rule_type ?? ''),
+        String(trigger.promotionRule ?? ''),
+    ].map((value) => value.trim().toUpperCase());
+    if (!ruleTokens.some((token) => SECOND_PAIR_RULE_KEYS.has(token))) return null;
+    return { minPairs: Math.max(2, resolvePromotionMinQuantity(promotion) || 2) };
+};
+
 const promotionMeetsQuantityRule = (promotion: Promotion, item: CartItem): boolean => {
     const minQuantity = resolvePromotionMinQuantity(promotion);
     if (minQuantity <= 0) return true;
@@ -679,6 +712,38 @@ export const applyPromotions = (cart: CartItem[], config: BusinessConfig, termin
     // Apply Promotions
     // Priority: We apply the first matching promotion for simplicity in this prototype.
     // In a real system, we might want "Best Offer" logic or "Stackable" flags.
+
+    // --- Regla "segundo par": se resuelve a nivel de ticket ---
+    for (const promo of activePromotions) {
+        const rule = resolveSecondPairRule(promo);
+        if (!rule) continue;
+
+        const candidates = processedCart
+            .map((item, index) => ({ item, index }))
+            .filter(({ item }) => (Number(item.quantity) || 0) > 0 && promotionAppliesToCartItem(promo, item, config));
+
+        const totalPairs = candidates.reduce((sum, { item }) => sum + Math.abs(Number(item.quantity) || 0), 0);
+        if (totalPairs < rule.minPairs) continue;
+
+        // floor(N/2) pares con descuento, empezando por el más barato.
+        let pairsToDiscount = Math.floor(totalPairs / 2);
+        const cheapestFirst = [...candidates].sort((a, b) => a.item.price - b.item.price);
+
+        for (const { item } of cheapestFirst) {
+            if (pairsToDiscount <= 0) break;
+            const quantity = Math.abs(Number(item.quantity) || 0);
+            if (quantity > pairsToDiscount) continue; // solo pares completos
+            const basePrice = item.originalPrice || item.price;
+            const discountFactor = 1 - promo.benefitValue / 100;
+            item.price = round2(basePrice * discountFactor);
+            item.originalPrice = basePrice;
+            item.adjustmentSource = 'PROMOTION';
+            item.appliedPromotionId = promo.id;
+            item.appliedPromotionName = promo.name;
+            pairsToDiscount -= quantity;
+        }
+        consumedQuantityPromotions.add(promo.id);
+    }
 
     processedCart = processedCart.map(item => {
         // Find ALL applicable promotions for this item
