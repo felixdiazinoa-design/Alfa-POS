@@ -60,3 +60,4 @@ debug*.cjs
 diagnostic-native-patches.json
 
 scripts/diagnostics/__pycache__/
+APK/.last-version-code
