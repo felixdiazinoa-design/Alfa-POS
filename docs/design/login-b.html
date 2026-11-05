@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>ALFA-POS · Login B</title>
+<style>
+  *{ box-sizing:border-box; margin:0; padding:0; }
+  :root{
+    --ink:#132124; --teal:#00A7A0; --teal-2:#00877F; --lime:#B8E336;
+    --paper:#F4F7F6; --line:#DEE7E6; --muted:#6C7F80;
+  }
+  body{
+    width:1440px; height:900px; overflow:hidden; display:grid; place-items:center;
+    font-family:"Sora","Inter",-apple-system,"Helvetica Neue",Arial,sans-serif;
+    background:
+      radial-gradient(900px 500px at 12% 0%, rgba(0,167,160,.13), transparent 60%),
+      radial-gradient(700px 460px at 92% 100%, rgba(184,227,54,.16), transparent 62%),
+      var(--paper);
+  }
+  .card{
+    width:520px; background:#fff; border-radius:28px; overflow:hidden;
+    box-shadow:0 40px 90px -50px rgba(19,33,36,.55), 0 2px 0 var(--line);
+    border:1px solid var(--line);
+  }
+  .head{ padding:38px 44px 26px; text-align:center; }
+  .mark{ width:60px; height:60px; margin:0 auto 16px; display:block; }
+  .word{ font-size:32px; font-weight:800; letter-spacing:-1.2px; color:var(--ink); }
+  .word span{ color:var(--teal); }
+  .sub{ margin-top:6px; font-size:13px; color:var(--muted); letter-spacing:.2px; }
+
+  .who{ display:flex; gap:10px; padding:0 44px; }
+  .who button{
+    flex:1; border:1.5px solid var(--line); background:#fff; border-radius:16px;
+    padding:14px 10px; font-family:inherit; cursor:pointer; transition:.16s;
+    display:flex; flex-direction:column; align-items:center; gap:8px;
+  }
+  .who button svg{ color:var(--ink); }
+  .who button span{ font-size:13px; font-weight:700; color:var(--ink); }
+  .who button.on{ border-color:var(--teal); background:#F0FBFA; }
+  .who button.on svg,.who button.on span{ color:var(--teal-2); }
+
+  .pins{ display:flex; justify-content:center; gap:12px; margin:26px 0 20px; }
+  .pins i{ width:13px; height:13px; border-radius:50%; background:#D7E1E0; }
+  .pins i.f{ background:var(--ink); }
+  .pins i.cur{ background:#fff; border:2.5px solid var(--teal); }
+
+  .pad{ display:grid; grid-template-columns:repeat(3,1fr); gap:10px; padding:0 44px; }
+  .pad button{
+    height:62px; border-radius:15px; border:1px solid var(--line); background:#FBFDFC;
+    font-family:inherit; font-size:23px; font-weight:700; color:var(--ink); cursor:pointer;
+    display:grid; place-items:center; transition:.14s;
+  }
+  .pad button:hover{ background:#F0F5F4; }
+  .pad button.fn{ font-size:13px; font-weight:700; color:var(--muted); background:#fff; }
+  .pad button.del{ color:#C0392B; }
+
+  .foot{
+    margin-top:26px; background:var(--ink); color:rgba(244,247,246,.75);
+    padding:18px 44px; display:flex; align-items:center; justify-content:space-between;
+    font-size:11.5px; letter-spacing:.7px; text-transform:uppercase;
+  }
+  .foot b{ color:var(--paper); font-size:12.5px; letter-spacing:.3px; text-transform:none; }
+  .live{ display:inline-flex; align-items:center; gap:8px; }
+  .live i{ width:8px; height:8px; border-radius:50%; background:var(--lime);
+           box-shadow:0 0 0 4px rgba(184,227,54,.16); }
+</style>
+</head>
+<body>
+  <div class="card">
+    <div class="head">
+      <svg class="mark" viewBox="0 0 64 64" aria-label="ALFA">
+        <path fill="#132124" d="M7 52 26.5 12 35 29.2 23.8 52Z"/>
+        <path fill="#00A7A0" d="M29.8 8H43l14 29.3-16.4-5.8Z"/>
+        <path fill="#B8E336" d="m38.8 35 16.8 6L61 52H46.7Z"/>
+        <path fill="#F4F7F6" d="m28.4 33.4 6.2 12.7L31.7 52h-8Z"/>
+      </svg>
+      <div class="word">ALFA<span>-POS</span></div>
+      <div class="sub">Acceso de sistema · Supermercado</div>
+    </div>
+
+    <div class="who">
+      <button class="on">
+        <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round">
+          <circle cx="12" cy="8" r="3.6"/><path d="M5 20c0-3.6 3.1-5.6 7-5.6s7 2 7 5.6"/>
+        </svg>
+        <span>Administrador</span>
+      </button>
+      <button>
+        <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round">
+          <circle cx="12" cy="8" r="3.6"/><path d="M5 20c0-3.6 3.1-5.6 7-5.6s7 2 7 5.6"/>
+        </svg>
+        <span>Cajero</span>
+      </button>
+    </div>
+
+    <div class="pins"><i class="f"></i><i class="f"></i><i class="cur"></i><i></i></div>
+
+    <div class="pad">
+      <button>1</button><button>2</button><button>3</button>
+      <button>4</button><button>5</button><button>6</button>
+      <button>7</button><button>8</button><button>9</button>
+      <button class="fn del">Limpiar</button><button>0</button><button class="fn">⌫</button>
+    </div>
+
+    <div class="foot">
+      <div>Terminal <b>POS-001</b></div>
+      <div class="live"><i></i> En línea</div>
+      <div>v <b>1.1.375</b></div>
+    </div>
+  </div>
+</body>
+</html>
