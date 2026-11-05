@@ -8061,6 +8061,51 @@ const POSInterface: React.FC<POSInterfaceProps> = ({
                            </span>
                         </button>
                      )}
+                     {/* Cliente y comprobante compactos, arriba a la derecha */}
+                     <div className="flex shrink-0 items-center gap-1.5">
+                        {selectedCustomer ? (
+                           <div className="flex items-center gap-1.5 rounded-xl border border-[#DEE7E6] bg-white px-2 py-1 shadow-sm">
+                              <UserPlus size={14} className="text-[#00A7A0]" />
+                              <span className="max-w-[140px] truncate text-[11px] font-black text-[#132124]">{selectedCustomer.name}</span>
+                              {egoClubTierLabel && (
+                                 <span className={`text-[9px] font-black uppercase tracking-wide px-1.5 py-0.5 rounded border ${getTierBadgeClass(selectedCustomer.tier)}`}>
+                                    {egoClubTierLabel}
+                                 </span>
+                              )}
+                              <button
+                                 type="button"
+                                 onClick={() => onSelectCustomer(null)}
+                                 title="Quitar cliente del ticket"
+                                 className="rounded p-0.5 text-[#9DAEAD] transition-colors hover:text-[#C0392B]"
+                              >
+                                 <X size={12} />
+                              </button>
+                           </div>
+                        ) : (
+                           <button
+                              type="button"
+                              onClick={onOpenCustomers}
+                              title="Asignar cliente al ticket"
+                              className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-dashed border-[#C9D8D7] bg-white px-2.5 text-[10px] font-black uppercase tracking-wide text-[#6C7F80] transition-colors hover:border-[#00A7A0] hover:text-[#00877F]"
+                           >
+                              <UserPlus size={14} /> Cliente
+                           </button>
+                        )}
+                        {!isOrderTakerMode && !isFiscalModeDisabled && (
+                           <span
+                              title={`Status fiscal: ${fiscalStatus.type} ${fiscalStatus.hasNCF ? 'activo' : 'agotado'}`}
+                              className={`inline-flex h-9 items-center gap-1.5 rounded-xl border px-2.5 text-[10px] font-black uppercase tracking-wide ${
+                                 canCheckoutWithFiscalPolicy
+                                    ? 'border-[#DCEBD0] bg-[#F5FBEA] text-[#5B7A18]'
+                                    : 'border-red-200 bg-red-50 text-red-600'
+                              }`}
+                           >
+                              <Landmark size={12} />
+                              {fiscalStatus.type}{fiscalStatus.hasNCF ? '' : ' · sin NCF'}
+                           </span>
+                        )}
+                     </div>
+
                      <button
                         onClick={() => setRightSidebarTab('CART')}
                         aria-label={`Abrir carrito${cartQuantity > 0 ? ` con ${cartQuantity} artículos` : ''}`}
@@ -8224,7 +8269,9 @@ const POSInterface: React.FC<POSInterfaceProps> = ({
                         </div>
                      </div>
                   ) : (
+                     isMobile && (
                      <button onClick={onOpenCustomers} className="w-full flex items-center justify-between p-3 bg-white border-2 border-dashed border-gray-300 rounded-xl text-gray-400 hover:text-blue-500 group"><div className="flex items-center gap-2"><UserPlus size={18} /><span className="text-xs font-bold uppercase">Asignar Cliente</span></div><ChevronRight size={16} /></button>
+                     )
                   )
                }
 
@@ -8246,7 +8293,7 @@ const POSInterface: React.FC<POSInterfaceProps> = ({
                   </div>
                )}
 
-               {!isOrderTakerMode && !isFiscalModeDisabled && (
+               {isMobile && !isOrderTakerMode && !isFiscalModeDisabled && (
                   <div className={`mt-1 flex items-center gap-2 px-3 py-1.5 rounded-lg border text-[10px] font-bold uppercase ${canCheckoutWithFiscalPolicy ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : 'bg-red-50 text-red-600 border-red-100 animate-pulse'}`}>
                      <Landmark size={12} />
                      <span>Status Fiscal: {`${fiscalStatus.type} ${fiscalStatus.hasNCF ? (fiscalStatus.isTerminalBlock ? 'Bloque Terminal' : (fiscalStatus.isUsingPool ? 'Reservado en Pool' : 'Lote Global Activo')) : 'Agotado'}`}</span>
