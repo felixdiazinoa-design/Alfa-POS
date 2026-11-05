@@ -311,13 +311,33 @@ const ModernLoginScreen: React.FC<ModernLoginScreenProps> = ({
 
   return (
     <div className="modern-login-container">
-      <div className="modern-login-brand">
-        <div className="modern-login-brand-wordmark">
-          <span className="modern-login-brand-mark">CLIC</span>
-          <span className="modern-login-brand-pos">POS</span>
+      <aside className="modern-login-brand">
+        <div className="alfa-brand-top">
+          <svg className="alfa-brand-mark" viewBox="0 0 64 64" aria-label="ALFA">
+            <path fill="#F4F7F6" d="M7 52 26.5 12 35 29.2 23.8 52Z" />
+            <path fill="#00A7A0" d="M29.8 8H43l14 29.3-16.4-5.8Z" />
+            <path fill="#B8E336" d="m38.8 35 16.8 6L61 52H46.7Z" />
+            <path fill="#132124" d="m28.4 33.4 6.2 12.7L31.7 52h-8Z" />
+          </svg>
+          <div className="modern-login-brand-wordmark">
+            <span className="modern-login-brand-mark">ALFA</span>
+            <span className="modern-login-brand-pos">-POS</span>
+          </div>
+          <p className="alfa-brand-tag">Punto de venta · Retail Suite</p>
         </div>
-        <span className="modern-login-brand-time">{dateTimeLabel}</span>
-      </div>
+
+        <div className="alfa-brand-bottom">
+          <div className="alfa-brand-store">
+            <span className="alfa-brand-dot" />
+            {subVertical || 'Terminal'}
+          </div>
+          <div className="alfa-brand-meta">
+            <div>Terminal<b>{config.terminalName || config.stationNumber || 'POS-001'}</b></div>
+            {buildVersion ? <div>Versión<b>{buildVersion}</b></div> : null}
+            <div>Hora<b>{dateTimeLabel}</b></div>
+          </div>
+        </div>
+      </aside>
 
       <div className={`modern-login-card animate-fade-in ${error ? 'animate-shake' : ''}`}>
         {/* Left Side: Company & User Selection */}
@@ -443,9 +463,8 @@ const ModernLoginScreen: React.FC<ModernLoginScreenProps> = ({
               <p className="modern-biometrics-text italic">{loginFooterText}</p>
             )}
 
-            <div className="mt-6 text-center text-xs text-slate-300/85">
-              <p>Terminal ID: POS-001</p>
-              {buildVersion && <p className="mt-1 text-sky-200/95 font-semibold">Versión: {buildVersion}</p>}
+            <div className="mt-6 text-center text-[11px] text-[#6C7F80]">
+              <p>{subVertical || 'Terminal'} · {config.terminalName || config.stationNumber || 'POS-001'}</p>
             </div>
           </div>
         </div>

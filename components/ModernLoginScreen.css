@@ -355,3 +355,209 @@
     height: 54px;
   }
 }
+
+/* ==========================================================================
+   Rediseño ALFA-POS (login A): panel de marca oscuro + acceso sobre papel.
+   Estas reglas van al final para prevalecer sobre el tema anterior.
+   ========================================================================== */
+.modern-login-container {
+  display: flex;
+  flex-direction: row;
+  background: #F4F7F6;
+  color: #132124;
+  font-family: "Sora", "Inter", -apple-system, "Helvetica Neue", Arial, sans-serif;
+}
+
+/* ---------- panel de marca ---------- */
+.modern-login-brand {
+  position: relative;
+  top: auto;
+  right: auto;
+  z-index: 1;
+  width: 42%;
+  min-width: 380px;
+  max-width: 620px;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 0;
+  padding: 3.2rem 3rem 2.4rem;
+  border-radius: 0;
+  border: none;
+  background: #132124;
+  color: #F4F7F6;
+  overflow: hidden;
+}
+.modern-login-brand::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(rgba(244, 247, 246, 0.045) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(244, 247, 246, 0.045) 1px, transparent 1px);
+  background-size: 56px 56px;
+  pointer-events: none;
+}
+.modern-login-brand::after {
+  content: "";
+  position: absolute;
+  width: 520px;
+  height: 520px;
+  right: -200px;
+  top: -170px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(0, 167, 160, 0.5), transparent 62%);
+  pointer-events: none;
+}
+.alfa-brand-top,
+.alfa-brand-bottom { position: relative; z-index: 2; width: 100%; }
+
+.alfa-brand-mark { width: 68px; height: 68px; margin-bottom: 1.4rem; }
+.modern-login-brand .modern-login-brand-wordmark {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0;
+  background: none;
+  border: none;
+  padding: 0;
+  font-size: 2.6rem;
+  font-weight: 800;
+  letter-spacing: -0.045em;
+  line-height: 1;
+}
+.modern-login-brand .modern-login-brand-mark { color: #F4F7F6; letter-spacing: -0.045em; }
+.modern-login-brand .modern-login-brand-pos { color: #00A7A0; letter-spacing: -0.045em; }
+.alfa-brand-tag {
+  margin-top: 0.7rem;
+  font-size: 0.95rem;
+  font-weight: 500;
+  color: rgba(244, 247, 246, 0.6);
+  letter-spacing: 0.01em;
+}
+.modern-login-brand-time { display: none; }
+
+.alfa-brand-store {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.7rem;
+  padding: 0.7rem 1.05rem;
+  border-radius: 0.9rem;
+  background: rgba(244, 247, 246, 0.07);
+  border: 1px solid rgba(244, 247, 246, 0.12);
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: #F4F7F6;
+  text-transform: capitalize;
+}
+.alfa-brand-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: #B8E336;
+  box-shadow: 0 0 0 4px rgba(184, 227, 54, 0.18);
+}
+.alfa-brand-meta {
+  margin-top: 1.4rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1.9rem;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: rgba(244, 247, 246, 0.4);
+}
+.alfa-brand-meta b {
+  display: block;
+  margin-top: 0.32rem;
+  font-size: 0.85rem;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  text-transform: none;
+  color: rgba(244, 247, 246, 0.88);
+}
+
+/* ---------- tarjeta / área de acceso ---------- */
+.modern-login-card {
+  width: auto;
+  flex: 1 1 auto;
+  height: 100vh;
+  background: #F4F7F6;
+  backdrop-filter: none;
+  color: #132124;
+}
+.modern-login-left {
+  flex: 1 1 55%;
+  background: #F4F7F6;
+  border-right: none;
+  padding: 3rem 2.4rem;
+  justify-content: center;
+}
+.modern-login-right {
+  flex: 1 1 45%;
+  background: #F4F7F6;
+  padding: 2.6rem 2.4rem;
+  justify-content: center;
+}
+.modern-login-title {
+  color: #132124;
+  font-size: 1.95rem;
+  font-weight: 800;
+  letter-spacing: -0.035em;
+  text-transform: none;
+}
+.modern-login-subtitle {
+  color: #6C7F80;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  text-transform: capitalize;
+}
+.modern-lock-icon-container {
+  background: #E7F7F6;
+  border-color: #CDEBE8;
+  color: #00877F;
+  box-shadow: none;
+}
+.modern-lock-icon-container svg { color: #00877F; }
+
+/* usuarios */
+.modern-user-card {
+  background: #FFFFFF;
+  border: 1.5px solid #DEE7E6;
+  border-radius: 1.1rem;
+  box-shadow: 0 1px 0 rgba(19, 33, 36, 0.03);
+}
+.modern-user-card:hover { border-color: #BFD8D5; transform: translateY(-1px); }
+.modern-user-card.active {
+  border-color: #00A7A0;
+  background: #F0FBFA;
+  box-shadow: 0 10px 30px -18px rgba(0, 167, 160, 0.85);
+}
+.modern-user-avatar { background: #EDF2F1; color: #1B3034; }
+.modern-user-card.active .modern-user-avatar { background: #00A7A0; color: #FFFFFF; }
+.modern-user-avatar-fallback { color: #1B3034; }
+.modern-user-card.active .modern-user-avatar-fallback { color: #FFFFFF; }
+.modern-user-name { color: #132124; font-weight: 800; }
+.modern-user-card.active .modern-user-name { color: #00877F; }
+
+/* pin + teclado */
+.modern-pin-display, .modern-pin-section { color: #132124; }
+.modern-pin-input { color: #132124; caret-color: #00A7A0; }
+.modern-key {
+  background: #FFFFFF;
+  border: 1px solid #DEE7E6;
+  border-radius: 1.1rem;
+  color: #132124;
+  font-weight: 700;
+  box-shadow: 0 2px 0 rgba(19, 33, 36, 0.04);
+  transition: transform 0.14s ease, border-color 0.14s ease;
+}
+.modern-key:hover { border-color: #BFD8D5; transform: translateY(-1px); }
+.modern-key:active { transform: translateY(0); }
+.modern-key.special { background: transparent; border-color: transparent; color: #6C7F80; box-shadow: none; }
+.modern-key.special:hover { color: #C0392B; background: #FEF3F1; }
+
+.modern-biometrics-footer { border-top-color: #E1E9E8; }
+.modern-biometrics-text { color: #6C7F80; }
