@@ -74,6 +74,7 @@ import { isSyncFeatureEnabled } from '../services/sync/SyncFeatureFlags';
 import { requestJson } from '../services/network/httpClient';
 import ProductTableSupermarket from './ProductTableSupermarket';
 import { countPendingLoyaltyOperations } from '../utils/loyaltyOutbox';
+import LoyaltySyncPanel from './LoyaltySyncPanel';
 import SupermarketTicketSummary from './SupermarketTicketSummary';
 import BarcodeScannerModal from './BarcodeScannerModal';
 import { printCashMovementReceipt, printComanda, printPrecuenta } from '../utils/printer';
@@ -2232,6 +2233,7 @@ const POSInterface: React.FC<POSInterfaceProps> = ({
    const [sellerPickerCartId, setSellerPickerCartId] = useState<string | null>(null);
    // Operaciones de lealtad en cola: alimenta el chip 'N pendientes' del resumen.
    const [pendingLoyaltyOps, setPendingLoyaltyOps] = useState(0);
+   const [showLoyaltySyncPanel, setShowLoyaltySyncPanel] = useState(false);
    const [showSplitModal, setShowSplitModal] = useState(false);
    const [showPaymentModal, setShowPaymentModal] = useState(false);
 
@@ -8755,6 +8757,7 @@ const POSInterface: React.FC<POSInterfaceProps> = ({
                            units={cart.reduce((acc, item) => acc + item.quantity, 0)}
                            points={pointsEarned}
                            pendingSync={pendingLoyaltyOps}
+                           onOpenSync={() => setShowLoyaltySyncPanel(true)}
                         />
                         <div className="supermarket-checkout">
                            <ActionGrid
@@ -9284,6 +9287,13 @@ const POSInterface: React.FC<POSInterfaceProps> = ({
                </div>
             );
          })()}
+
+         {showLoyaltySyncPanel && (
+            <LoyaltySyncPanel
+               onClose={() => setShowLoyaltySyncPanel(false)}
+               onFlushed={() => { void countPendingLoyaltyOperations().then(setPendingLoyaltyOps).catch(() => undefined); }}
+            />
+         )}
 
          <SupervisorModal {...supervisorModalProps} users={users} />
 

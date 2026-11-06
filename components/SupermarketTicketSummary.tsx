@@ -10,9 +10,11 @@ interface Props {
   points: number;
   /** Envíos pendientes de sincronizar (cola de documentos/reportes). */
   pendingSync?: number;
+  /** Abre el detalle de envíos al tocar el chip de estado. */
+  onOpenSync?: () => void;
 }
 
-export default function SupermarketTicketSummary({ symbol, subtotal, discount, tax, total, units, points, pendingSync = 0 }: Props) {
+export default function SupermarketTicketSummary({ symbol, subtotal, discount, tax, total, units, points, pendingSync = 0, onOpenSync }: Props) {
   // Estado de conexión real del WebView: verde en línea, ámbar/rojo sin red.
   const [isOnline, setIsOnline] = useState(() => (typeof navigator === 'undefined' ? true : navigator.onLine !== false));
   useEffect(() => {
@@ -72,18 +74,23 @@ export default function SupermarketTicketSummary({ symbol, subtotal, discount, t
       <p className="supermarket-payable font-black text-slate-900 tabular-nums mt-1">{money(total)}</p>
       {/* Estado de conexión al pie del recuadro, en la esquina inferior derecha. */}
       <div className="mt-2 flex flex-wrap items-center justify-end gap-1.5">
-        <span
-          className={`inline-flex items-center gap-1.5 rounded-md px-1.5 py-0.5 text-[9px] font-black uppercase tracking-wide ${
+        <button
+          type="button"
+          onClick={onOpenSync}
+          disabled={!onOpenSync}
+          className={`inline-flex items-center gap-1.5 rounded-md px-1.5 py-0.5 text-[9px] font-black uppercase tracking-wide transition-shadow ${
             isOnline ? 'bg-[#F5FBEA] text-[#4C6B12]' : 'bg-[#FEF6F5] text-[#C0392B]'
-          }`}
-          title={isOnline ? 'La caja está conectada al ERP' : 'Sin conexión: el ticket se guarda localmente'}
+          } ${onOpenSync ? 'cursor-pointer hover:ring-1 hover:ring-[#C9D8D7]' : 'cursor-default'}`}
+          title={onOpenSync
+            ? 'Ver envíos pendientes al ERP'
+            : (isOnline ? 'La caja está conectada al ERP' : 'Sin conexión: el ticket se guarda localmente')}
         >
           <span
             className="h-1.5 w-1.5 rounded-full"
             style={{ background: isOnline ? '#B8E336' : '#C0392B' }}
           />
           {isOnline ? 'En línea' : 'Sin conexión'}
-        </span>
+        </button>
         {pendingSync > 0 && (
           <span
             className="inline-flex items-center gap-1 rounded-md bg-[#FEFAF1] px-1.5 py-0.5 text-[9px] font-black uppercase tracking-wide text-[#9A5B00]"
