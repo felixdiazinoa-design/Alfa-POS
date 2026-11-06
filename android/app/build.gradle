@@ -153,9 +153,15 @@ tasks.register('collectApks') {
         // Sin key.properties el APK release sale sin firmar: se aparta en APK/unsigned/.
         def hasSigningMaterial = rootProject.file('key.properties').exists()
 
+        // Solo la versión de esta compilación: build/outputs conserva APK de builds
+        // anteriores y copiarlos todos reeditaba releases viejos cada vez.
+        def currentVersionName = android.defaultConfig.versionName?.toString()
         def copied = []
         outputRoot.eachFileRecurse { apk ->
             if (!apk.isFile() || !apk.name.endsWith('.apk')) {
+                return
+            }
+            if (currentVersionName && !apk.name.contains("-${currentVersionName}-")) {
                 return
             }
 

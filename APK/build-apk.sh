@@ -174,6 +174,26 @@ if [[ "${FOUND}" == "0" ]]; then
   exit 1
 fi
 
+# Regla de entregables: en APK/ solo quedan la compilación nueva y la anterior.
+# Antes se acumulaba una por versión y cada build reescribía las viejas.
+prune_old_apks() {
+  local variant="$1"
+  local -a files
+  # De más nuevo a más viejo por versionCode del nombre.
+  files=($(ls -1 "${SCRIPT_DIR}"/*"${variant}".apk 2>/dev/null | sort -t. -k4 -nr))
+  local keep=0
+  local file
+  for file in "${files[@]}"; do
+    keep=$((keep + 1))
+    if (( keep > 2 )); then
+      info "Descartando entregable antiguo: $(basename "${file}")"
+      rm -f "${file}" "${file}.sha256"
+    fi
+  done
+}
+
+prune_old_apks "${VARIANT}"
+
 # Puerta de contenido: un APK sin EGO Club o sin CardNET no debe publicarse.
 # (La 1.1.374 salió sin EGO Club porque se compiló desde un worktree atrasado.)
 if [[ -x "${SCRIPT_DIR}/verify-apk.sh" ]]; then
