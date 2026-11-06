@@ -4972,6 +4972,20 @@ const POSInterface: React.FC<POSInterfaceProps> = ({
       }
    };
 
+   /**
+    * Cambio de cantidad desde el menú de acciones de la línea.
+    *
+    * Reutiliza `updateCartItem` para que pasen las mismas validaciones que al
+    * editar desde el detalle (stock, ticket subtotalizado, permisos).
+    */
+   const changeCartLineQuantity = useCallback(async (cartId: string, quantity: number) => {
+      const target = (cart || []).find(item => item.cartId === cartId);
+      if (!target) return;
+      const next = Math.max(1, Math.floor(Number(quantity) || 1));
+      if (next === Math.abs(Number(target.quantity) || 1)) return;
+      await updateCartItem({ ...target, quantity: target.quantity < 0 ? -next : next });
+   }, [cart, updateCartItem]);
+
    const handleClearFreshCartItems = async () => {
       if (blockRecoveredUberOrderMutation('limpiar los artículos nuevos del ticket')) return;
       if (hasSubtotalizedCart) {
@@ -8342,6 +8356,7 @@ const POSInterface: React.FC<POSInterfaceProps> = ({
                   onDuplicateItem={duplicateCartLine}
                   onLineDiscount={(cartId) => setLineDiscountCartId(cartId)}
                   onAssignSeller={(cartId) => setSellerPickerCartId(cartId)}
+                  onChangeQuantity={changeCartLineQuantity}
                   resolveSellerName={resolveSalespersonLabel}
                   containerStyle={isMobile ? bottomAwareScrollStyle : undefined}
                />
