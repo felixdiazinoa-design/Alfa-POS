@@ -1,7 +1,7 @@
 import React from 'react';
 import {
     Percent, QrCode, Inbox, StickyNote, Box, Save, Settings,
-    Lock, LogOut, Package, RotateCcw, CreditCard, Calendar, Power,
+    Lock, LogOut, Package, RotateCcw, CreditCard, Calendar, Power, History,
     ArrowDownLeft, ArrowUpRight, Clock, ShoppingBag, Truck, Building2
 } from 'lucide-react';
 import { BusinessConfig, OrderServiceType } from '../types';
@@ -134,7 +134,7 @@ const ActionGrid: React.FC<ActionGridProps> = ({
                 {renderButton('CASH_IN', 'Entrada', <ArrowDownLeft />, 'utility')}
                 {renderButton('CASH_OUT', 'Salida', <ArrowUpRight />, 'utility')}
                 {renderButton('TRACKING', 'Rastreo', <Package />, 'utility')}
-                {renderButton('AGENDA', 'Agenda', <Calendar />, 'utility')}
+                {renderButton('HISTORY', 'Historial', <History />, 'utility')}
 
                 {/* CLOSING GROUP (Red) */}
                 {!hideFinancialClosings && renderButton('Z_REPORT', 'Cierre Z', <Lock />, 'closing')}

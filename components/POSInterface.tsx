@@ -7150,7 +7150,7 @@ const POSInterface: React.FC<POSInterfaceProps> = ({
             void handleBackToMap();
             break;
          case 'loyalty_card': setShowLoyaltyModal(true); break;
-         case 'AGENDA': if (onOpenAgenda) onOpenAgenda(); break;
+         case 'HISTORY': onOpenHistory(); break;
       }
    };
 
@@ -7911,13 +7911,13 @@ const POSInterface: React.FC<POSInterfaceProps> = ({
                         <button
                            onClick={handleClearFreshCartItems}
                            disabled={!hasClearableFreshItems}
-                           className="h-10 w-10 rounded-xl bg-red-50 text-red-600 hover:bg-red-100 disabled:opacity-40 disabled:hover:text-red-600 flex items-center justify-center"
+                           className="flex h-9 w-9 items-center justify-center rounded-[10px] border border-[#F2DCD8] bg-white text-[#C0392B] transition-colors hover:bg-[#FDECEA] disabled:opacity-40"
                            title={hasClearableFreshItems ? 'Borrar artículos nuevos' : 'No hay artículos nuevos para borrar'}
                         >
-                           <Trash2 size={20} />
+                           <Trash2 size={16} />
                         </button>
                      )}
-                     <button onClick={openParkAliasModal} className="h-10 w-10 rounded-xl bg-blue-600 text-white shadow-sm shadow-blue-600/25 hover:bg-blue-700 flex items-center justify-center" title="Guardar Ticket">
+                     <button onClick={openParkAliasModal} className="flex h-9 w-9 items-center justify-center rounded-[10px] border border-[#E1E9E8] bg-white text-[#1B3034] transition-colors hover:bg-[#F4F7F6]" title="Guardar Ticket">
                         <Save size={20} />
                      </button>
                      {/* El botón 'Espera' del dock (acción PARK_LIST) aparece con la
@@ -8042,11 +8042,11 @@ const POSInterface: React.FC<POSInterfaceProps> = ({
 
                   {/* RETAIL MODE SEARCH BAR */}
                   {isRetailMode && (
-                     <div className="relative min-w-0 max-w-xl flex-1 group">
+                     <div className="relative mx-auto min-w-0 max-w-2xl flex-1 group">
                         <button
                            type="button"
                            onClick={() => handleRetailSearchSubmit()}
-                           className="absolute left-2 top-1/2 -translate-y-1/2 flex h-9 w-9 items-center justify-center rounded-lg text-gray-400 transition-all hover:bg-purple-50 hover:text-purple-600"
+                           className="absolute left-2 top-1/2 -translate-y-1/2 flex h-9 w-9 items-center justify-center rounded-lg bg-transparent text-[#9DAEAD] transition-colors hover:text-[#00877F] hover:bg-transparenturple-50 hover:text-purple-600"
                            title="Buscar"
                         >
                            <Search size={18} />
@@ -8067,12 +8067,12 @@ const POSInterface: React.FC<POSInterfaceProps> = ({
                               }
                            }}
                            autoFocus
-                           className="w-full pl-12 pr-12 py-2.5 bg-gray-100 rounded-xl border-none outline-none focus:bg-white focus:ring-2 focus:ring-purple-500 text-sm font-bold transition-all"
+                           className="w-full pl-12 pr-12 py-2.5 bg-white rounded-xl border border-[#DEE7E6] outline-none focus:border-[#00A7A0] focus:ring-2 focus:ring-[#00A7A0]/20 text-sm font-bold transition-all"
                         />
                         <button
                            type="button"
                            onClick={() => setSearchTerm('')}
-                           className="absolute right-2 top-1/2 -translate-y-1/2 flex h-8 w-8 items-center justify-center rounded-lg text-gray-400 transition-all hover:bg-slate-200 hover:text-slate-600"
+                           className="absolute right-2 top-1/2 -translate-y-1/2 flex h-8 w-8 items-center justify-center rounded-lg bg-transparent text-[#9DAEAD] transition-colors hover:text-[#00877F] hover:bg-transparent hover:text-slate-600"
                            title={searchTerm ? 'Limpiar búsqueda' : 'Lector silencioso activo'}
                         >
                            {searchTerm ? <X size={16} /> : <ScanBarcode size={16} />}
