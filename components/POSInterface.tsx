@@ -73,6 +73,7 @@ import { syncManager } from '../services/sync/SyncManager';
 import { isSyncFeatureEnabled } from '../services/sync/SyncFeatureFlags';
 import { requestJson } from '../services/network/httpClient';
 import ProductTableSupermarket from './ProductTableSupermarket';
+import { countPendingLoyaltyOperations } from '../utils/loyaltyOutbox';
 import SupermarketTicketSummary from './SupermarketTicketSummary';
 import BarcodeScannerModal from './BarcodeScannerModal';
 import { printCashMovementReceipt, printComanda, printPrecuenta } from '../utils/printer';
@@ -1594,6 +1595,27 @@ const POSInterface: React.FC<POSInterfaceProps> = ({
 
       return { byReference, byName };
    }, [catalogProducts, warehouses]);
+   useEffect(() => {
+      let cancelled = false;
+      const refresh = async () => {
+         try {
+            const pending = await countPendingLoyaltyOperations();
+            if (!cancelled) setPendingLoyaltyOps(pending);
+         } catch {
+            if (!cancelled) setPendingLoyaltyOps(0);
+         }
+      };
+      void refresh();
+      const timer = setInterval(() => { void refresh(); }, 15000);
+      const onOnline = () => { void refresh(); };
+      window.addEventListener('online', onOnline);
+      return () => {
+         cancelled = true;
+         clearInterval(timer);
+         window.removeEventListener('online', onOnline);
+      };
+   }, [cart.length]);
+
    const salesUsers = useMemo(() => getTerminalSnapshotSellers(config, terminalId), [config, terminalId]);
    const resolveSalespersonLabel = useCallback((salespersonId?: string | null) => {
       return resolveTerminalSellerName(salespersonId, config, terminalId, users) || 'Vendedor';
@@ -2208,6 +2230,8 @@ const POSInterface: React.FC<POSInterfaceProps> = ({
    // Acciones por línea del ticket denso (modo supermercado)
    const [lineDiscountCartId, setLineDiscountCartId] = useState<string | null>(null);
    const [sellerPickerCartId, setSellerPickerCartId] = useState<string | null>(null);
+   // Operaciones de lealtad en cola: alimenta el chip 'N pendientes' del resumen.
+   const [pendingLoyaltyOps, setPendingLoyaltyOps] = useState(0);
    const [showSplitModal, setShowSplitModal] = useState(false);
    const [showPaymentModal, setShowPaymentModal] = useState(false);
 
@@ -8730,6 +8754,7 @@ const POSInterface: React.FC<POSInterfaceProps> = ({
                            total={cartTotal}
                            units={cart.reduce((acc, item) => acc + item.quantity, 0)}
                            points={pointsEarned}
+                           pendingSync={pendingLoyaltyOps}
                         />
                         <div className="supermarket-checkout">
                            <ActionGrid

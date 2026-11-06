@@ -68,34 +68,31 @@ export default function SupermarketTicketSummary({ symbol, subtotal, discount, t
       </div>
     </dl>
     <div className="border-t border-slate-200 mt-3 pt-3">
-      {/* 'TOTAL A PAGAR' a la izquierda y el estado de conexión en la esquina
-          inferior derecha, en la misma fila. */}
-      <div className="flex items-end justify-between gap-3">
-        <p className="text-xs text-slate-500 font-bold uppercase tracking-wider">Total a pagar</p>
-        <div className="flex flex-col items-end gap-1 pb-0.5">
-          <span
-            className={`inline-flex items-center gap-1.5 rounded-md px-1.5 py-0.5 text-[9px] font-black uppercase tracking-wide ${
-              isOnline ? 'bg-[#F5FBEA] text-[#4C6B12]' : 'bg-[#FEF6F5] text-[#C0392B]'
-            }`}
-            title={isOnline ? 'La caja está conectada al ERP' : 'Sin conexión: el ticket se guarda localmente'}
-          >
-            <span
-              className="h-1.5 w-1.5 rounded-full"
-              style={{ background: isOnline ? '#B8E336' : '#C0392B' }}
-            />
-            {isOnline ? 'En línea' : 'Sin conexión'}
-          </span>
-          {pendingSync > 0 && (
-            <span
-              className="inline-flex items-center gap-1 rounded-md bg-[#FEFAF1] px-1.5 py-0.5 text-[9px] font-black uppercase tracking-wide text-[#9A5B00]"
-              title="Documentos pendientes de enviar al ERP"
-            >
-              {pendingSync} pendiente{pendingSync === 1 ? '' : 's'} de envío
-            </span>
-          )}
-        </div>
-      </div>
+      <p className="text-xs text-slate-500 font-bold uppercase tracking-wider">Total a pagar</p>
       <p className="supermarket-payable font-black text-slate-900 tabular-nums mt-1">{money(total)}</p>
+      {/* Estado de conexión al pie del recuadro, en la esquina inferior derecha. */}
+      <div className="mt-2 flex flex-wrap items-center justify-end gap-1.5">
+        <span
+          className={`inline-flex items-center gap-1.5 rounded-md px-1.5 py-0.5 text-[9px] font-black uppercase tracking-wide ${
+            isOnline ? 'bg-[#F5FBEA] text-[#4C6B12]' : 'bg-[#FEF6F5] text-[#C0392B]'
+          }`}
+          title={isOnline ? 'La caja está conectada al ERP' : 'Sin conexión: el ticket se guarda localmente'}
+        >
+          <span
+            className="h-1.5 w-1.5 rounded-full"
+            style={{ background: isOnline ? '#B8E336' : '#C0392B' }}
+          />
+          {isOnline ? 'En línea' : 'Sin conexión'}
+        </span>
+        {pendingSync > 0 && (
+          <span
+            className="inline-flex items-center gap-1 rounded-md bg-[#FEFAF1] px-1.5 py-0.5 text-[9px] font-black uppercase tracking-wide text-[#9A5B00]"
+            title="Operaciones de lealtad pendientes de enviar al ERP"
+          >
+            {pendingSync} pendiente{pendingSync === 1 ? '' : 's'}
+          </span>
+        )}
+      </div>
     </div>
   </section>;
 }
