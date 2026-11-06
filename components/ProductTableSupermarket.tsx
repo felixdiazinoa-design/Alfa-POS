@@ -97,14 +97,14 @@ const ProductTableSupermarket: React.FC<ProductTableSupermarketProps> = ({
             <table className="supermarket-ticket-table w-full text-left border-collapse table-fixed">
                 <thead className="bg-[#F4F7F6] sticky top-0 z-10 text-[9px] text-[#6C7F80] font-black tracking-[0.1em] uppercase">
                     <tr>
-                        <th className="w-14 px-2 py-2 text-center text-[#132124]">Cant</th>
-                        <th className="px-2 py-2">Descripción</th>
-                        <th className="w-[104px] px-2 py-2">Color</th>
-                        <th className="w-[76px] px-2 py-2">Talla</th>
-                        <th className="w-[112px] px-2 py-2">Material</th>
-                        <th className="w-[104px] px-2 py-2 text-right">Precio<span className="block text-[8px] tracking-normal font-medium normal-case">Unitario</span></th>
-                        <th className="w-[92px] px-2 py-2 text-right">ITBIS<span className="block text-[8px] tracking-normal font-medium normal-case">{taxIncluded ? 'Incluido' : 'Línea'}</span></th>
-                        <th className="w-[104px] px-2 py-2 text-right text-[#132124]">Total</th>
+                        <th className="w-[56px] px-2 py-2 text-center text-[#132124]">Cant</th>
+                        <th className="w-[30%] px-2 py-2">Descripción</th>
+                        <th className="w-[13%] px-2 py-2">Color</th>
+                        <th className="w-[8%] px-2 py-2">Talla</th>
+                        <th className="w-[13%] px-2 py-2">Material</th>
+                        <th className="w-[11%] px-2 py-2 text-right">Precio<span className="block text-[8px] tracking-normal font-medium normal-case">Unitario</span></th>
+                        <th className="w-[9%] px-2 py-2 text-right">ITBIS<span className="block text-[8px] tracking-normal font-medium normal-case">{taxIncluded ? 'Incluido' : 'Línea'}</span></th>
+                        <th className="w-[11%] px-2 py-2 text-right text-[#132124]">Total</th>
                         <th className="w-[52px] px-1 py-2 text-center">Acciones</th>
                     </tr>
                 </thead>
@@ -200,13 +200,13 @@ const ProductTableSupermarket: React.FC<ProductTableSupermarketProps> = ({
                                     </span>
                                 </td>
 
-                                <td className="supermarket-money px-2 py-2 text-right text-[10px] font-semibold text-[#1B3034] tabular-nums">
+                                <td className="px-2 py-2 text-right text-[10px] font-semibold text-[#1B3034] tabular-nums whitespace-nowrap">
                                     {money(item.price)}
                                 </td>
-                                <td className="supermarket-money px-2 py-2 text-right text-[10px] text-[#6C7F80] tabular-nums">
+                                <td className="px-2 py-2 text-right text-[10px] text-[#6C7F80] tabular-nums whitespace-nowrap">
                                     {money(taxAmount)}
                                 </td>
-                                <td className={`supermarket-money supermarket-line-total px-2 py-2 text-right text-[11px] font-bold tabular-nums ${isReturn ? 'text-[#C0392B]' : 'text-[#132124]'}`}>
+                                <td className={`px-2 py-2 text-right text-[11px] font-bold tabular-nums whitespace-nowrap ${isReturn ? 'text-[#C0392B]' : 'text-[#132124]'}`}>
                                     {money(total)}
                                 </td>
 
@@ -222,9 +222,9 @@ const ProductTableSupermarket: React.FC<ProductTableSupermarketProps> = ({
                                     </button>
 
                                     {actionsOpen && (
-                                        <div className="absolute right-2 top-full z-30 w-56 rounded-xl border border-[#E1E9E8] bg-white p-2 text-left shadow-xl">
+                                        <div className="absolute right-2 top-full z-30 w-56 rounded-xl border border-[#E1E9E8] p-2 text-left shadow-xl" style={{ backgroundColor: "#ffffff" }}>
                                             {onChangeQuantity && (
-                                                <div className="mb-1 rounded-lg border border-[#E6EDEC] bg-[#F7FAF9] p-1.5">
+                                                <div className="mb-1 rounded-lg border border-[#E6EDEC] p-1.5" style={{ backgroundColor: "#F7FAF9" }}>
                                                     <p className="mb-1 text-[9px] font-black uppercase tracking-wide text-[#8A9A99]">Cantidad</p>
                                                     <div className="flex items-center justify-between gap-2">
                                                         <button
@@ -251,7 +251,7 @@ const ProductTableSupermarket: React.FC<ProductTableSupermarketProps> = ({
                                                 <button
                                                     type="button"
                                                     onClick={() => { onDuplicateItem(item.cartId!); setOpenActionsId(null); }}
-                                                    className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-[11px] font-bold text-[#1B3034] hover:bg-[#F4F7F6]"
+                                                    className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-[11px] font-bold text-[#1B3034] hover:bg-[#F4F7F6]" style={{ backgroundColor: "transparent", border: "none" }}
                                                 >
                                                     <Copy size={13} className="text-[#00877F]" /> Duplicar línea
                                                 </button>
@@ -260,7 +260,7 @@ const ProductTableSupermarket: React.FC<ProductTableSupermarketProps> = ({
                                                 <button
                                                     type="button"
                                                     onClick={() => { onLineDiscount(item.cartId!); setOpenActionsId(null); }}
-                                                    className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-[11px] font-bold text-[#1B3034] hover:bg-[#F4F7F6]"
+                                                    className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-[11px] font-bold text-[#1B3034] hover:bg-[#F4F7F6]" style={{ backgroundColor: "transparent", border: "none" }}
                                                 >
                                                     <Percent size={13} className="text-[#00877F]" /> Descuento en la línea
                                                 </button>
@@ -269,7 +269,7 @@ const ProductTableSupermarket: React.FC<ProductTableSupermarketProps> = ({
                                                 <button
                                                     type="button"
                                                     onClick={() => { onAssignSeller(item.cartId!); setOpenActionsId(null); }}
-                                                    className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-[11px] font-bold text-[#1B3034] hover:bg-[#F4F7F6]"
+                                                    className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-[11px] font-bold text-[#1B3034] hover:bg-[#F4F7F6]" style={{ backgroundColor: "transparent", border: "none" }}
                                                 >
                                                     <UserPlus size={13} className="text-[#00877F]" /> Asignar vendedor
                                                 </button>
@@ -277,7 +277,7 @@ const ProductTableSupermarket: React.FC<ProductTableSupermarketProps> = ({
                                             <button
                                                 type="button"
                                                 onClick={() => { onRemoveItem(item.cartId!); setOpenActionsId(null); }}
-                                                className="mt-0.5 flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-[11px] font-bold text-[#C0392B] hover:bg-[#FDECEA]"
+                                                className="mt-0.5 flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-[11px] font-bold text-[#C0392B] hover:bg-[#FDECEA]" style={{ backgroundColor: "transparent", border: "none" }}
                                             >
                                                 <Trash2 size={13} /> Borrar línea
                                             </button>
