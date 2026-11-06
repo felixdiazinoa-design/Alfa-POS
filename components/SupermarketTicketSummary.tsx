@@ -20,22 +20,37 @@ export default function SupermarketTicketSummary({ symbol, subtotal, discount, t
       </div>
       {points > 0 && <div className="rounded-lg bg-purple-100 px-3 py-1.5 text-purple-800 text-[11px] font-bold">Ganarás <strong className="text-sm tabular-nums">{points}</strong> puntos</div>}
     </div>
-    {/* Los importes iban pegados porque cada columna podía encogerse hasta
-        solaparse. Ahora no se encogen y el espacio entre columnas es explícito. */}
-    <dl className="flex flex-wrap items-start gap-x-8 gap-y-1 text-[11px] text-slate-500">
-      <div className="shrink-0">
+    {/* Los importes se solapaban en la caja porque las columnas podían
+        encogerse. Se fija con estilos en línea: ninguna clase los sobrescribe. */}
+    <dl
+      className="text-[11px] text-slate-500"
+      style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'flex-start', columnGap: '2rem', rowGap: '0.25rem' }}
+    >
+      <div style={{ flex: '0 0 auto', minWidth: '7.5rem' }}>
         <dt>Subtotal</dt>
-        <dd className="whitespace-nowrap text-[13px] font-bold tabular-nums text-slate-700">{money(subtotal)}</dd>
+        <dd
+          className="text-[13px] font-bold tabular-nums text-slate-700"
+          style={{ whiteSpace: 'nowrap', marginLeft: 0 }}
+        >
+          {money(subtotal)}
+        </dd>
       </div>
       {discount > 0 && (
-        <div className="shrink-0 text-red-600">
+        <div style={{ flex: '0 0 auto', minWidth: '7.5rem' }} className="text-red-600">
           <dt>Descuento</dt>
-          <dd className="whitespace-nowrap text-[13px] font-bold tabular-nums">-{money(discount)}</dd>
+          <dd className="text-[13px] font-bold tabular-nums" style={{ whiteSpace: 'nowrap', marginLeft: 0 }}>
+            -{money(discount)}
+          </dd>
         </div>
       )}
-      <div className="shrink-0">
+      <div style={{ flex: '0 0 auto', minWidth: '7.5rem' }}>
         <dt>Impuestos</dt>
-        <dd className="whitespace-nowrap text-[13px] font-bold tabular-nums text-slate-700">{money(tax)}</dd>
+        <dd
+          className="text-[13px] font-bold tabular-nums text-slate-700"
+          style={{ whiteSpace: 'nowrap', marginLeft: 0 }}
+        >
+          {money(tax)}
+        </dd>
       </div>
     </dl>
     <div className="border-t border-slate-200 mt-3 pt-3">
