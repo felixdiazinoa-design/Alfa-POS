@@ -8155,6 +8155,9 @@ const POSInterface: React.FC<POSInterfaceProps> = ({
                            </span>
                         )}
                      </button>
+                     {/* Igual que en móvil: en supermercado el dock ya ofrece todas
+                         las acciones, este botón repetía el mismo panel. */}
+                     {!isRetailMode && (
                      <button
                         onClick={() => setRightSidebarTab('ACTIONS')}
                         aria-label="Abrir acciones rápidas"
@@ -8175,6 +8178,7 @@ const POSInterface: React.FC<POSInterfaceProps> = ({
                            <Layers size={18} strokeWidth={2.3} />
                         </span>
                      </button>
+                     )}
                      {!isKioskMode && <OrderServiceTypeButton value={effectiveOrderServiceType} onClick={() => handleGridAction('TAKEOUT')} />}
                   </div>
                </div>
