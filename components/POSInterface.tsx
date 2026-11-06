@@ -7892,6 +7892,9 @@ const POSInterface: React.FC<POSInterfaceProps> = ({
                         </span>
                      )}
                   </button>
+                  {/* En modo supermercado el dock inferior ya da todas las acciones:
+                      este botón solo repetía el mismo panel y no hacía falta. */}
+                  {!isRetailMode && (
                   <button
                      type="button"
                      data-testid="mobile-actions-tab-button"
@@ -7908,11 +7911,14 @@ const POSInterface: React.FC<POSInterfaceProps> = ({
                         <Layers size={18} strokeWidth={2.3} />
                      </span>
                   </button>
+                  )}
                   {!isKioskMode && <OrderServiceTypeButton value={effectiveOrderServiceType} onClick={() => handleGridAction('TAKEOUT')} />}
                </div>
 
-               {/* CUSTOMER PILL (MOBILE) */}
-               {
+               {/* CUSTOMER PILL (solo móvil): en escritorio el cliente ya vive en
+                   la barra superior y repetirlo bajo el buscador duplicaba la
+                   misma información en dos franjas seguidas. */}
+               {isMobile && (
                   selectedCustomer ? (
                      <div className="flex items-center justify-between bg-blue-50 px-4 py-2 rounded-full border border-blue-100" onClick={onOpenCustomers}>
                         <div className="flex items-center gap-2">
@@ -7948,7 +7954,7 @@ const POSInterface: React.FC<POSInterfaceProps> = ({
                         <UserPlus size={14} /> Asignar Cliente
                      </button>
                   )
-               }
+               )}
             </div >
 
             {/* DESKTOP: marca + mesa/comensales bajo el logo; retail: busqueda al centro; botones carrito/acciones alineados a la derecha (como APK 1.0.300) */}
