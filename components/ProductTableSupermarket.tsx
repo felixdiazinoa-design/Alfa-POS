@@ -97,15 +97,18 @@ const ProductTableSupermarket: React.FC<ProductTableSupermarketProps> = ({
             <table className="supermarket-ticket-table w-full text-left border-collapse table-fixed">
                 <thead className="bg-[#F4F7F6] sticky top-0 z-10 text-[9px] text-[#6C7F80] font-black tracking-[0.1em] uppercase">
                     <tr>
-                        <th className="w-[56px] px-2 py-2 text-center text-[#132124]">Cant</th>
-                        <th className="w-[30%] px-2 py-2">Descripción</th>
-                        <th className="w-[13%] px-2 py-2">Color</th>
-                        <th className="w-[8%] px-2 py-2">Talla</th>
-                        <th className="w-[13%] px-2 py-2">Material</th>
-                        <th className="w-[11%] px-2 py-2 text-right">Precio<span className="block text-[8px] tracking-normal font-medium normal-case">Unitario</span></th>
-                        <th className="w-[9%] px-2 py-2 text-right">ITBIS<span className="block text-[8px] tracking-normal font-medium normal-case">{taxIncluded ? 'Incluido' : 'Línea'}</span></th>
-                        <th className="w-[11%] px-2 py-2 text-right text-[#132124]">Total</th>
-                        <th className="w-[52px] px-1 py-2 text-center">Acciones</th>
+                        {/* Los anchos van en línea: Tailwind no genera clases como
+                            w-[30%] para esta tabla, así que la descripción se comía
+                            todo el espacio sobrante y abría un hueco antes de Color. */}
+                        <th className="px-2 py-2 text-center text-[#132124]" style={{ width: '56px' }}>Cant</th>
+                        <th className="px-2 py-2" style={{ width: '30%' }}>Descripción</th>
+                        <th className="px-2 py-2" style={{ width: '13%' }}>Color</th>
+                        <th className="px-2 py-2" style={{ width: '8%' }}>Talla</th>
+                        <th className="px-2 py-2" style={{ width: '13%' }}>Material</th>
+                        <th className="px-2 py-2 text-right" style={{ width: '11%' }}>Precio<span className="block text-[8px] tracking-normal font-medium normal-case">Unitario</span></th>
+                        <th className="px-2 py-2 text-right" style={{ width: '9%' }}>ITBIS<span className="block text-[8px] tracking-normal font-medium normal-case">{taxIncluded ? 'Incluido' : 'Línea'}</span></th>
+                        <th className="px-2 py-2 text-right text-[#132124]" style={{ width: '11%' }}>Total</th>
+                        <th className="px-1 py-2 text-center" style={{ width: '52px' }}>Acciones</th>
                     </tr>
                 </thead>
                 <tbody className="text-sm divide-y divide-[#EDF2F1]">
