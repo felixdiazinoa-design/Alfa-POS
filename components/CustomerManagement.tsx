@@ -1349,32 +1349,32 @@ const CustomerManagement: React.FC<CustomerManagementProps> = ({
                               </div>
 
                               {/* Actions */}
-                              <div className="flex gap-2 w-full md:w-auto">
+                              <div className="flex w-full flex-wrap items-center gap-3 md:w-auto md:flex-nowrap">
                                  {isEgoClubEnabled(config) && (
                                     <button
                                        onClick={() => setIsEgoCardOpen(true)}
-                                       className="inline-flex h-9 flex-1 items-center justify-center gap-1.5 rounded-[10px] border border-[#132124] bg-white px-3.5 text-[13px] font-bold text-[#132124] transition-colors hover:bg-[#F4F7F6] md:flex-none"
+                                       className="inline-flex h-8 flex-1 items-center justify-center gap-1 rounded-lg border border-[#132124]/70 bg-white px-2.5 text-[11px] font-bold text-[#132124] transition-colors hover:bg-[#F4F7F6] md:flex-none"
                                        title="Tarjeta digital del socio"
                                     >
-                                       <BadgeCheck size={14} /> <span className="hidden lg:inline">Tarjeta EGO Club</span>
+                                       <BadgeCheck size={12} /> <span className="hidden lg:inline">Tarjeta EGO Club</span>
                                     </button>
                                  )}
                                  {onSelect && (
                                     <button
                                        onClick={() => onSelect(selectedCustomer)}
-                                       className="inline-flex h-9 flex-1 items-center justify-center gap-1.5 rounded-[10px] bg-[#00A7A0] px-3.5 text-[13px] font-bold text-white transition-colors hover:bg-[#00877F] md:flex-none"
+                                       className="inline-flex h-8 flex-1 items-center justify-center gap-1 rounded-lg bg-[#00A7A0] px-3 text-[11px] font-bold text-white transition-colors hover:bg-[#00877F] md:flex-none"
                                     >
-                                       <Check size={14} /> Asignar al Ticket
+                                       <Check size={12} /> Asignar al Ticket
                                     </button>
                                  )}
-                                 <button onClick={handleWhatsApp} title="Escribir por WhatsApp" className="inline-flex h-9 flex-1 items-center justify-center gap-1.5 rounded-[10px] border border-[#E1E9E8] bg-white px-3 text-[13px] font-bold text-[#4A615F] transition-colors hover:border-[#00A7A0] hover:text-[#00877F] md:flex-none">
-                                    <MessageCircle size={14} /> <span className="hidden lg:inline">WhatsApp</span>
+                                 <button onClick={handleWhatsApp} title="Escribir por WhatsApp" className="inline-flex h-8 flex-1 items-center justify-center gap-1 rounded-lg border border-[#E1E9E8] bg-white px-2.5 text-[11px] font-bold text-[#4A615F] transition-colors hover:border-[#00A7A0] hover:text-[#00877F] md:flex-none">
+                                    <MessageCircle size={12} /> <span className="hidden lg:inline">WhatsApp</span>
                                  </button>
-                                 <button onClick={handleEditClick} className="p-2 border border-gray-200 rounded-xl hover:bg-gray-50 text-gray-500 transition-colors">
-                                    <Edit2 size={18} />
+                                 <button onClick={handleEditClick} className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-[#E1E9E8] text-[#6C7F80] transition-colors hover:bg-[#F4F7F6]">
+                                    <Edit2 size={13} />
                                  </button>
-                                 <button onClick={() => handleDelete(selectedCustomer.id)} className="p-2 border border-red-100 rounded-xl hover:bg-red-50 text-red-500 transition-colors">
-                                    <Trash2 size={18} />
+                                 <button onClick={() => handleDelete(selectedCustomer.id)} className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-[#F2DCD8] bg-[#FEF6F5] text-[#C0392B] transition-colors hover:bg-[#FDECEA]">
+                                    <Trash2 size={13} />
                                  </button>
                               </div>
                            </div>

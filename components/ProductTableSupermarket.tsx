@@ -104,6 +104,12 @@ const ProductTableSupermarket: React.FC<ProductTableSupermarketProps> = ({
                         const discountLabel = discountAmount > 0
                             ? `${discountOrigin} −${currencySymbol}${discountAmount.toFixed(2)}${discountPct > 0 ? ` (${discountPct}%)` : ''}`
                             : discountOrigin;
+                        // La variante llega como "Color: X / Talla: Y / Material: Z":
+                        // se muestra en tres piezas para que se lea de un vistazo.
+                        const variantTokens = String(item.variantInfo || '')
+                            .split('/')
+                            .map(token => token.trim())
+                            .filter(Boolean);
                         const longPrice = currencySymbol.length + item.price.toFixed(2).length > 13;
                         const longTax = currencySymbol.length + taxAmount.toFixed(2).length > 13;
                         const longTotal = currencySymbol.length + total.toFixed(2).length > 13;
@@ -127,9 +133,24 @@ const ProductTableSupermarket: React.FC<ProductTableSupermarketProps> = ({
                                             <span className={`font-bold text-[11px] leading-tight break-words min-w-0 ${isReturn ? 'text-[#C0392B]' : 'text-[#1B3034]'}`}>
                                                 {item.name}
                                             </span>
-                                            {item.variantInfo && (
-                                                <span className="supermarket-variant inline-flex rounded border border-[#DEE7E6] bg-[#F4F7F6] px-1.5 py-0.5 text-[9px] font-bold text-[#00877F]">
-                                                    {item.variantInfo}
+                                            {variantTokens.length > 0 && (
+                                                <span className="supermarket-variant inline-flex flex-wrap items-center gap-1">
+                                                    {variantTokens.map((token, tokenIndex) => {
+                                                        const separator = token.indexOf(':');
+                                                        const label = separator > 0 ? token.slice(0, separator).trim() : '';
+                                                        const value = separator > 0 ? token.slice(separator + 1).trim() : token;
+                                                        return (
+                                                            <span
+                                                                key={`${item.cartId}-variant-${tokenIndex}`}
+                                                                className="inline-flex items-baseline gap-1 rounded border border-[#DEE7E6] bg-[#F4F7F6] px-1.5 py-0.5"
+                                                            >
+                                                                {label && (
+                                                                    <span className="text-[8px] font-bold uppercase tracking-wide text-[#8A9A99]">{label}</span>
+                                                                )}
+                                                                <span className="text-[9px] font-black text-[#00877F]">{value}</span>
+                                                            </span>
+                                                        );
+                                                    })}
                                                 </span>
                                             )}
                                         </div>
