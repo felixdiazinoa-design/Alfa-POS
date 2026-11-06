@@ -7839,16 +7839,9 @@ const POSInterface: React.FC<POSInterfaceProps> = ({
                      <button onClick={openParkAliasModal} className="h-10 w-10 rounded-xl bg-blue-600 text-white shadow-sm shadow-blue-600/25 hover:bg-blue-700 flex items-center justify-center" title="Guardar Ticket">
                         <Save size={20} />
                      </button>
-                     {/* En modo supermercado la espera ya se recupera con el botón
-                         ESPERA del dock inferior; este acceso duplicaba esa acción. */}
-                     {!activeTable && !isRetailMode && (
-                        <button onClick={() => setShowParkedList(!showParkedList)} className="h-10 w-10 rounded-xl bg-orange-500 text-white shadow-sm shadow-orange-500/25 hover:bg-orange-600 relative flex items-center justify-center" title="Recuperar Ticket">
-                           <Inbox size={20} />
-                           {(Array.isArray(parkedTickets) ? parkedTickets : []).length > 0 && (
-                              <span className="absolute top-1 right-1 w-2.5 h-2.5 bg-orange-500 rounded-full border-2 border-white"></span>
-                           )}
-                        </button>
-                     )}
+                     {/* El botón 'Espera' del dock (acción PARK_LIST) aparece con la
+                         misma condición que este acceso (!activeTable), así que era un
+                         duplicado exacto: se retira de la cabecera. */}
                      <div className="relative group">
                         <button className="h-10 w-10 rounded-xl bg-emerald-600 text-white shadow-sm shadow-emerald-600/25 hover:bg-emerald-700 flex items-center justify-center"><MoreVertical size={20} /></button>
                         <div className="absolute right-0 top-full mt-2 w-48 bg-white rounded-xl shadow-xl border border-gray-100 hidden group-hover:block z-50">

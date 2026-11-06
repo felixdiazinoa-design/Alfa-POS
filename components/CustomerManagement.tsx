@@ -1066,7 +1066,7 @@ const CustomerManagement: React.FC<CustomerManagementProps> = ({
 
          {/* HEADER */}
          <header className="bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between shrink-0 z-20">
-            <div className="flex items-center gap-4">
+            <div className="flex items-center gap-3">
                <button onClick={handleClose} className="p-2 hover:bg-gray-100 rounded-full text-gray-500 transition-colors">
                   <ArrowLeft size={24} />
                </button>
@@ -1090,27 +1090,27 @@ const CustomerManagement: React.FC<CustomerManagementProps> = ({
                      onClick={() => setIsEgoEnrollOpen(true)}
                      disabled={!egoEnrollChannel.enabled}
                      title={egoEnrollChannel.enabled ? 'Alta de socio EGO Club' : (egoEnrollChannel.reason || 'Alta no disponible en esta caja')}
-                     className="inline-flex h-9 items-center gap-1.5 rounded-[10px] border border-[#132124] bg-white px-3.5 text-[13px] font-bold text-[#132124] transition-colors hover:bg-[#F4F7F6] disabled:border-[#DEE7E6] disabled:bg-[#F4F7F6] disabled:text-[#9DAEAD] active:scale-95"
+                     className="inline-flex h-8 items-center gap-1 rounded-lg border border-[#132124]/70 bg-white px-2.5 text-[11px] font-bold text-[#132124] transition-colors hover:bg-[#F4F7F6] disabled:border-[#DEE7E6] disabled:bg-[#F4F7F6] disabled:text-[#9DAEAD] active:scale-95"
                   >
-                     <BadgeCheck size={14} /> Alta EGO Club
+                     <BadgeCheck size={12} /> Alta EGO Club
                      {!egoEnrollChannel.enabled && (
-                        <span className="text-[10px] font-black uppercase tracking-wide text-gray-600">no disponible</span>
+                        <span className="text-[9px] font-black uppercase tracking-wide text-gray-500">n/d</span>
                      )}
                   </button>
                )}
                {onSelect && selectedCustomer && (
                   <button
                      onClick={() => onSelect(selectedCustomer)}
-                     className="inline-flex h-9 items-center gap-1.5 rounded-[10px] bg-[#00A7A0] px-3.5 text-[13px] font-bold text-white transition-colors hover:bg-[#00877F] active:scale-95"
+                     className="inline-flex h-8 items-center gap-1 rounded-lg bg-[#00A7A0] px-3 text-[11px] font-bold text-white transition-colors hover:bg-[#00877F] active:scale-95"
                   >
                      Asignar al Ticket
                   </button>
                )}
                <button
                   onClick={handleCreateClick}
-                  className="inline-flex h-9 items-center gap-1.5 rounded-[10px] px-3 text-[13px] font-bold text-[#6C7F80] transition-colors hover:bg-[#EDF2F1] hover:text-[#132124] active:scale-95"
+                  className="inline-flex h-8 items-center gap-1 rounded-lg px-2.5 text-[11px] font-bold text-[#6C7F80] transition-colors hover:bg-[#EDF2F1] hover:text-[#132124] active:scale-95"
                >
-                  <UserPlus size={14} /> Nuevo Cliente
+                  <UserPlus size={12} /> Nuevo Cliente
                </button>
             </div>
          </header>

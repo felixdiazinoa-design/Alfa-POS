@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 
 interface Props {
   symbol: string;
@@ -8,9 +8,23 @@ interface Props {
   total: number;
   units: number;
   points: number;
+  /** Envíos pendientes de sincronizar (cola de documentos/reportes). */
+  pendingSync?: number;
 }
 
-export default function SupermarketTicketSummary({ symbol, subtotal, discount, tax, total, units, points }: Props) {
+export default function SupermarketTicketSummary({ symbol, subtotal, discount, tax, total, units, points, pendingSync = 0 }: Props) {
+  // Estado de conexión real del WebView: verde en línea, ámbar/rojo sin red.
+  const [isOnline, setIsOnline] = useState(() => (typeof navigator === 'undefined' ? true : navigator.onLine !== false));
+  useEffect(() => {
+    const goOnline = () => setIsOnline(true);
+    const goOffline = () => setIsOnline(false);
+    window.addEventListener('online', goOnline);
+    window.addEventListener('offline', goOffline);
+    return () => {
+      window.removeEventListener('online', goOnline);
+      window.removeEventListener('offline', goOffline);
+    };
+  }, []);
   const money = (value: number) => symbol + value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   return <section className="supermarket-footer-summary" aria-label="Resumen del ticket">
     <div className="flex flex-wrap gap-2 mb-3">
@@ -54,6 +68,28 @@ export default function SupermarketTicketSummary({ symbol, subtotal, discount, t
       </div>
     </dl>
     <div className="border-t border-slate-200 mt-3 pt-3">
+      <div className="mb-1 flex flex-wrap items-center gap-2">
+        <span
+          className={`inline-flex items-center gap-1.5 rounded-md px-1.5 py-0.5 text-[9px] font-black uppercase tracking-wide ${
+            isOnline ? 'bg-[#F5FBEA] text-[#4C6B12]' : 'bg-[#FEF6F5] text-[#C0392B]'
+          }`}
+          title={isOnline ? 'La caja está conectada al ERP' : 'Sin conexión: el ticket se guarda localmente'}
+        >
+          <span
+            className="h-1.5 w-1.5 rounded-full"
+            style={{ background: isOnline ? '#B8E336' : '#C0392B' }}
+          />
+          {isOnline ? 'En línea' : 'Sin conexión'}
+        </span>
+        {pendingSync > 0 && (
+          <span
+            className="inline-flex items-center gap-1 rounded-md bg-[#FEFAF1] px-1.5 py-0.5 text-[9px] font-black uppercase tracking-wide text-[#9A5B00]"
+            title="Documentos pendientes de enviar al ERP"
+          >
+            {pendingSync} pendiente{pendingSync === 1 ? '' : 's'} de envío
+          </span>
+        )}
+      </div>
       <p className="text-xs text-slate-500 font-bold uppercase tracking-wider">Total a pagar</p>
       <p className="supermarket-payable font-black text-slate-900 tabular-nums mt-1">{money(total)}</p>
     </div>
