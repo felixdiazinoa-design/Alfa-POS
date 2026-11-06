@@ -1074,7 +1074,7 @@ const CustomerManagement: React.FC<CustomerManagementProps> = ({
                   <Users className={themeText} /> Directorio de Clientes
                </h1>
             </div>
-            <div className="flex gap-2">
+            <div className="flex items-center gap-3">
                {isEgoClubEnabled(config) && loyaltyQueue.some(item => item.status !== 'SYNCED') && (
                   <button
                      onClick={() => setIsLoyaltyQueueOpen(prev => !prev)}
@@ -1090,7 +1090,7 @@ const CustomerManagement: React.FC<CustomerManagementProps> = ({
                      onClick={() => setIsEgoEnrollOpen(true)}
                      disabled={!egoEnrollChannel.enabled}
                      title={egoEnrollChannel.enabled ? 'Alta de socio EGO Club' : (egoEnrollChannel.reason || 'Alta no disponible en esta caja')}
-                     className="px-4 py-2.5 rounded-xl font-bold bg-gray-900 text-white shadow-lg flex items-center gap-2 active:scale-95 transition-all disabled:bg-gray-300 disabled:shadow-none"
+                     className="px-3 py-2 rounded-xl font-bold text-[13px] bg-gray-900 text-white shadow-sm flex items-center gap-2 active:scale-95 transition-all disabled:bg-gray-300 disabled:shadow-none"
                   >
                      <BadgeCheck size={18} /> Alta EGO Club
                      {!egoEnrollChannel.enabled && (
@@ -1101,16 +1101,16 @@ const CustomerManagement: React.FC<CustomerManagementProps> = ({
                {onSelect && selectedCustomer && (
                   <button
                      onClick={() => onSelect(selectedCustomer)}
-                     className="px-6 py-2.5 rounded-xl font-black bg-emerald-600 text-white shadow-lg animate-in zoom-in"
+                     className="px-4 py-2 rounded-xl font-black text-[13px] bg-emerald-600 text-white shadow-sm animate-in zoom-in"
                   >
                      Asignar al Ticket
                   </button>
                )}
                <button
                   onClick={handleCreateClick}
-                  className={`px-4 py-2.5 rounded-xl font-bold text-white shadow-lg shadow-blue-100 flex items-center gap-2 active:scale-95 transition-all ${themeBg}`}
+                  className={`px-3 py-2 rounded-xl font-bold text-[13px] text-white shadow-sm flex items-center gap-2 active:scale-95 transition-all ${themeBg}`}
                >
-                  <UserPlus size={18} /> Nuevo Cliente
+                  <UserPlus size={16} /> Nuevo Cliente
                </button>
             </div>
          </header>
