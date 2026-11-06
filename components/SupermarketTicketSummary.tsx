@@ -10,11 +10,13 @@ interface Props {
   points: number;
   /** Envíos pendientes de sincronizar (cola de documentos/reportes). */
   pendingSync?: number;
+  /** ¿El ERP responde? Si es false el chip se pinta en rojo. */
+  erpReachable?: boolean;
   /** Abre el detalle de envíos al tocar el chip de estado. */
   onOpenSync?: () => void;
 }
 
-export default function SupermarketTicketSummary({ symbol, subtotal, discount, tax, total, units, points, pendingSync = 0, onOpenSync }: Props) {
+export default function SupermarketTicketSummary({ symbol, subtotal, discount, tax, total, units, points, pendingSync = 0, erpReachable, onOpenSync }: Props) {
   // Estado de conexión real del WebView: verde en línea, ámbar/rojo sin red.
   const [isOnline, setIsOnline] = useState(() => (typeof navigator === 'undefined' ? true : navigator.onLine !== false));
   useEffect(() => {
@@ -27,6 +29,8 @@ export default function SupermarketTicketSummary({ symbol, subtotal, discount, t
       window.removeEventListener('offline', goOffline);
     };
   }, []);
+  // Rojo si el equipo está sin red o si el ERP no responde, aunque haya internet.
+  const connected = isOnline && erpReachable !== false;
   const money = (value: number) => symbol + value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   return <section className="supermarket-footer-summary" aria-label="Resumen del ticket">
     <div className="flex flex-wrap gap-2 mb-3">
@@ -79,26 +83,28 @@ export default function SupermarketTicketSummary({ symbol, subtotal, discount, t
           onClick={onOpenSync}
           disabled={!onOpenSync}
           className={`inline-flex items-center gap-1.5 rounded-md px-1.5 py-0.5 text-[9px] font-black uppercase tracking-wide transition-shadow ${
-            isOnline ? 'bg-[#F5FBEA] text-[#4C6B12]' : 'bg-[#FEF6F5] text-[#C0392B]'
+            connected ? 'bg-[#F5FBEA] text-[#4C6B12]' : 'bg-[#FEF6F5] text-[#C0392B]'
           } ${onOpenSync ? 'cursor-pointer hover:ring-1 hover:ring-[#C9D8D7]' : 'cursor-default'}`}
-          title={onOpenSync
-            ? 'Ver envíos pendientes al ERP'
-            : (isOnline ? 'La caja está conectada al ERP' : 'Sin conexión: el ticket se guarda localmente')}
+          title={!(connected)
+            ? 'Sin conexión con el ERP: las operaciones quedan en cola local'
+            : (onOpenSync ? 'Ver envíos pendientes al ERP' : 'Caja conectada al ERP')}
         >
           <span
             className="h-1.5 w-1.5 rounded-full"
-            style={{ background: isOnline ? '#B8E336' : '#C0392B' }}
+            style={{ background: connected ? '#B8E336' : '#C0392B' }}
           />
-          {isOnline ? 'En línea' : 'Sin conexión'}
+          {connected ? 'En línea' : 'Sin conexión'}
         </button>
-        {pendingSync > 0 && (
-          <span
-            className="inline-flex items-center gap-1 rounded-md bg-[#FEFAF1] px-1.5 py-0.5 text-[9px] font-black uppercase tracking-wide text-[#9A5B00]"
-            title="Operaciones de lealtad pendientes de enviar al ERP"
-          >
-            {pendingSync} pendiente{pendingSync === 1 ? '' : 's'}
-          </span>
-        )}
+        <span
+          className={`inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[9px] font-black uppercase tracking-wide ${
+            pendingSync > 0 ? 'bg-[#FEFAF1] text-[#9A5B00]' : 'bg-[#F4F7F6] text-[#6C7F80]'
+          }`}
+          title={pendingSync > 0
+            ? 'Operaciones de lealtad pendientes de enviar al ERP'
+            : 'Sin operaciones en cola'}
+        >
+          {pendingSync} pendiente{pendingSync === 1 ? '' : 's'}
+        </span>
       </div>
     </div>
   </section>;

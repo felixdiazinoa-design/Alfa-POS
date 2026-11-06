@@ -75,6 +75,7 @@ import { requestJson } from '../services/network/httpClient';
 import ProductTableSupermarket from './ProductTableSupermarket';
 import { countPendingLoyaltyOperations } from '../utils/loyaltyOutbox';
 import LoyaltySyncPanel from './LoyaltySyncPanel';
+import { resolveErpSyncApiBase } from '../utils/erpBaseUrl';
 import SupermarketTicketSummary from './SupermarketTicketSummary';
 import BarcodeScannerModal from './BarcodeScannerModal';
 import { printCashMovementReceipt, printComanda, printPrecuenta } from '../utils/printer';
@@ -1617,6 +1618,44 @@ const POSInterface: React.FC<POSInterfaceProps> = ({
       };
    }, [cart.length]);
 
+   // Sonda ligera al canal de sync del ERP. Si no responde, el chip del resumen
+   // se pinta en rojo aunque el equipo tenga internet.
+   useEffect(() => {
+      let cancelled = false;
+      const probe = async () => {
+         const base = resolveErpSyncApiBase();
+         if (!base) {
+            if (!cancelled) setErpReachable(false);
+            return;
+         }
+         try {
+            const controller = new AbortController();
+            const timeout = setTimeout(() => controller.abort(), 4000);
+            const response = await fetch(`${base.replace(/\/$/, '')}/health`, {
+               method: 'GET',
+               signal: controller.signal,
+               cache: 'no-store',
+            });
+            clearTimeout(timeout);
+            if (!cancelled) setErpReachable(response.ok);
+         } catch {
+            if (!cancelled) setErpReachable(false);
+         }
+      };
+      void probe();
+      const timer = setInterval(() => { void probe(); }, 20000);
+      const onOnline = () => { void probe(); };
+      const onOffline = () => setErpReachable(false);
+      window.addEventListener('online', onOnline);
+      window.addEventListener('offline', onOffline);
+      return () => {
+         cancelled = true;
+         clearInterval(timer);
+         window.removeEventListener('online', onOnline);
+         window.removeEventListener('offline', onOffline);
+      };
+   }, []);
+
    const salesUsers = useMemo(() => getTerminalSnapshotSellers(config, terminalId), [config, terminalId]);
    const resolveSalespersonLabel = useCallback((salespersonId?: string | null) => {
       return resolveTerminalSellerName(salespersonId, config, terminalId, users) || 'Vendedor';
@@ -2234,6 +2273,8 @@ const POSInterface: React.FC<POSInterfaceProps> = ({
    // Operaciones de lealtad en cola: alimenta el chip 'N pendientes' del resumen.
    const [pendingLoyaltyOps, setPendingLoyaltyOps] = useState(0);
    const [showLoyaltySyncPanel, setShowLoyaltySyncPanel] = useState(false);
+   // Alcanzabilidad real del ERP: distinto de estar "online" en la red local.
+   const [erpReachable, setErpReachable] = useState(true);
    const [showSplitModal, setShowSplitModal] = useState(false);
    const [showPaymentModal, setShowPaymentModal] = useState(false);
 
@@ -8757,6 +8798,7 @@ const POSInterface: React.FC<POSInterfaceProps> = ({
                            units={cart.reduce((acc, item) => acc + item.quantity, 0)}
                            points={pointsEarned}
                            pendingSync={pendingLoyaltyOps}
+                           erpReachable={erpReachable}
                            onOpenSync={() => setShowLoyaltySyncPanel(true)}
                         />
                         <div className="supermarket-checkout">
