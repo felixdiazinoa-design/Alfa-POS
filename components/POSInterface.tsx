@@ -7839,7 +7839,9 @@ const POSInterface: React.FC<POSInterfaceProps> = ({
                      <button onClick={openParkAliasModal} className="h-10 w-10 rounded-xl bg-blue-600 text-white shadow-sm shadow-blue-600/25 hover:bg-blue-700 flex items-center justify-center" title="Guardar Ticket">
                         <Save size={20} />
                      </button>
-                     {!activeTable && (
+                     {/* En modo supermercado la espera ya se recupera con el botón
+                         ESPERA del dock inferior; este acceso duplicaba esa acción. */}
+                     {!activeTable && !isRetailMode && (
                         <button onClick={() => setShowParkedList(!showParkedList)} className="h-10 w-10 rounded-xl bg-orange-500 text-white shadow-sm shadow-orange-500/25 hover:bg-orange-600 relative flex items-center justify-center" title="Recuperar Ticket">
                            <Inbox size={20} />
                            {(Array.isArray(parkedTickets) ? parkedTickets : []).length > 0 && (

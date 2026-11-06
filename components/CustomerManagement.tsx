@@ -1074,7 +1074,7 @@ const CustomerManagement: React.FC<CustomerManagementProps> = ({
                   <Users className={themeText} /> Directorio de Clientes
                </h1>
             </div>
-            <div className="flex items-center gap-2.5">
+            <div className="flex items-center gap-4">
                {isEgoClubEnabled(config) && loyaltyQueue.some(item => item.status !== 'SYNCED') && (
                   <button
                      onClick={() => setIsLoyaltyQueueOpen(prev => !prev)}
