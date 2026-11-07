@@ -266,14 +266,17 @@ const PaymentSettings: React.FC<PaymentSettingsProps> = ({ config, onUpdateConfi
           <h1 className="text-2xl font-black text-gray-800">Métodos de Pago</h1>
           <p className="text-sm text-gray-500">Configura las opciones de cobro visibles en caja y decide si una tarjeta se procesa manualmente o integrada a un dispositivo.</p>
         </div>
-        <div className="flex gap-3">
-          <button onClick={onClose} className="rounded-lg px-4 py-2 font-bold text-gray-500 hover:bg-gray-100">
+        <div className="flex items-center gap-3">
+          <button
+            onClick={onClose}
+            className="inline-flex h-11 items-center rounded-xl border border-[#E1E9E8] bg-white px-5 text-sm font-bold text-[#4A615F] transition-colors hover:bg-[#F4F7F6]"
+          >
             Cancelar
           </button>
           <button
             onClick={() => void handleSaveChanges()}
             disabled={isSaving}
-            className="flex items-center gap-2 rounded-xl bg-blue-600 px-6 py-3 font-bold text-white transition-all hover:bg-blue-700 disabled:cursor-wait disabled:opacity-60"
+            className="inline-flex h-11 items-center gap-2 rounded-xl bg-[#00A7A0] px-5 text-sm font-bold text-white transition-colors hover:bg-[#00877F] disabled:cursor-wait disabled:opacity-60"
           >
             <Save size={20} /> {isSaving ? 'Guardando...' : 'Guardar Cambios'}
           </button>
@@ -288,7 +291,7 @@ const PaymentSettings: React.FC<PaymentSettingsProps> = ({ config, onUpdateConfi
             </h2>
             <button
               onClick={handleAddNewMethod}
-              className="flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-sm font-bold text-white shadow-md transition-all hover:bg-blue-700"
+              className="inline-flex h-9 items-center gap-1.5 rounded-xl bg-[#00A7A0] px-4 text-sm font-bold text-white transition-colors hover:bg-[#00877F]"
             >
               <Plus size={18} /> Nuevo Método
             </button>
@@ -343,18 +346,18 @@ const PaymentSettings: React.FC<PaymentSettingsProps> = ({ config, onUpdateConfi
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-2 opacity-0 transition-opacity group-hover:opacity-100">
+                  <div className="flex shrink-0 items-center gap-2">
                     <button
                       onClick={() => handleEditMethod(method)}
-                      className="rounded-lg bg-gray-50 p-2 text-gray-500 transition-colors hover:bg-blue-50 hover:text-blue-600"
+                      className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-[#E1E9E8] bg-white text-[#4A615F] transition-colors hover:border-[#00A7A0] hover:text-[#00877F]"
                     >
-                      <Edit2 size={20} />
+                      <Edit2 size={16} />
                     </button>
                     <button
                       onClick={() => handleDeleteMethod(method.id)}
-                      className="rounded-lg bg-gray-50 p-2 text-gray-500 transition-colors hover:bg-red-50 hover:text-red-600"
+                      className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-[#F2DCD8] bg-white text-[#C0392B] transition-colors hover:bg-[#FDECEA]"
                     >
-                      <Trash2 size={20} />
+                      <Trash2 size={16} />
                     </button>
                   </div>
                 </div>

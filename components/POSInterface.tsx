@@ -8214,19 +8214,6 @@ const POSInterface: React.FC<POSInterfaceProps> = ({
                               <UserPlus size={14} /> Cliente
                            </button>
                         )}
-                        {!isOrderTakerMode && !isFiscalModeDisabled && (
-                           <span
-                              title={`Status fiscal: ${fiscalStatus.type} ${fiscalStatus.hasNCF ? 'activo' : 'agotado'}`}
-                              className={`inline-flex h-9 items-center gap-1.5 rounded-xl border px-2.5 text-[10px] font-black uppercase tracking-wide ${
-                                 canCheckoutWithFiscalPolicy
-                                    ? 'border-[#DCEBD0] bg-[#F5FBEA] text-[#5B7A18]'
-                                    : 'border-red-200 bg-red-50 text-red-600'
-                              }`}
-                           >
-                              <Landmark size={12} />
-                              {fiscalStatus.type}{fiscalStatus.hasNCF ? '' : ' · sin NCF'}
-                           </span>
-                        )}
                      </div>
 
                      <button
@@ -8824,6 +8811,7 @@ const POSInterface: React.FC<POSInterfaceProps> = ({
                            points={pointsEarned}
                            pendingSync={pendingLoyaltyOps}
                            erpReachable={erpReachable}
+                           fiscalLabel={isOrderTakerMode || isFiscalModeDisabled ? null : fiscalStatus.type}
                            onOpenSync={() => setShowLoyaltySyncPanel(true)}
                         />
                         <div className="supermarket-checkout">

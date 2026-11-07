@@ -539,8 +539,8 @@
   background: #F0FBFA;
   box-shadow: 0 10px 30px -18px rgba(0, 167, 160, 0.85);
 }
-.modern-user-avatar { background: #EDF2F1; color: #1B3034; }
-.modern-user-card.active .modern-user-avatar { background: #00A7A0; color: #FFFFFF; }
+.modern-user-avatar { background: #FFFFFF; color: #1B3034; border: 1px solid #E1E9E8; }
+.modern-user-card.active .modern-user-avatar { background: #00A7A0; color: #FFFFFF; border-color: #00A7A0; }
 .modern-user-avatar-fallback { color: #1B3034; }
 .modern-user-card.active .modern-user-avatar-fallback { color: #FFFFFF; }
 .modern-user-name { color: #132124; font-weight: 800; }
@@ -565,3 +565,16 @@
 
 .modern-biometrics-footer { border-top-color: #E1E9E8; }
 .modern-biometrics-text { color: #6C7F80; }
+
+/* Avatar del operador sobre blanco: el gris anterior se leía como tarjeta
+   deshabilitada, sobre todo con el tema claro del rediseño. */
+.modern-user-avatar {
+  background: #FFFFFF;
+  border: 1px solid #E1E9E8;
+  color: #1B3034;
+}
+.modern-user-card.active .modern-user-avatar {
+  background: #00A7A0;
+  border-color: #00A7A0;
+  color: #FFFFFF;
+}

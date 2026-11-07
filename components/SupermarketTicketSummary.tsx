@@ -12,11 +12,13 @@ interface Props {
   pendingSync?: number;
   /** ¿El ERP responde? Si es false el chip se pinta en rojo. */
   erpReachable?: boolean;
+  /** Comprobante fiscal por defecto del ticket (p. ej. 'B02'). */
+  fiscalLabel?: string | null;
   /** Abre el detalle de envíos al tocar el chip de estado. */
   onOpenSync?: () => void;
 }
 
-export default function SupermarketTicketSummary({ symbol, subtotal, discount, tax, total, units, points, pendingSync = 0, erpReachable, onOpenSync }: Props) {
+export default function SupermarketTicketSummary({ symbol, subtotal, discount, tax, total, units, points, pendingSync = 0, erpReachable, fiscalLabel, onOpenSync }: Props) {
   // Estado de conexión real del WebView: verde en línea, ámbar/rojo sin red.
   const [isOnline, setIsOnline] = useState(() => (typeof navigator === 'undefined' ? true : navigator.onLine !== false));
   useEffect(() => {
@@ -33,7 +35,17 @@ export default function SupermarketTicketSummary({ symbol, subtotal, discount, t
   const connected = isOnline && erpReachable !== false;
   const money = (value: number) => symbol + value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   return <section className="supermarket-footer-summary" aria-label="Resumen del ticket">
-    <div className="flex flex-wrap gap-2 mb-3">
+    <div className="mb-3 flex flex-wrap items-center gap-2">
+      {fiscalLabel && (
+        <span
+          className="ml-auto inline-flex h-6 items-center gap-1 rounded-md bg-[#F5FBEA] px-1.5 text-[9px] font-black uppercase tracking-wide text-[#5B7A18]"
+          title="Comprobante fiscal del ticket"
+        >
+          <span className="text-[10px]">▤</span>
+          {fiscalLabel}
+        </span>
+      )}
+
       <div className="rounded-lg bg-blue-100 px-3 py-2 text-blue-900">
         <span className="text-base font-black tabular-nums">{units}</span>
         <span className="ml-1.5 text-[11px] font-bold">{units === 1 ? 'unidad' : 'unidades'}</span>

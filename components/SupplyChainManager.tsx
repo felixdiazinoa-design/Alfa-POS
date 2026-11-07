@@ -1525,16 +1525,16 @@ const SupplyChainManager: React.FC<SupplyChainManagerProps> = ({
                </div>
 
                {/* Navigation Tabs (Big Touch Targets) */}
-               <div className="flex bg-gray-100 p-1.5 rounded-2xl overflow-x-auto no-scrollbar max-w-[70vw]">
+               <div className="flex gap-2 overflow-x-auto no-scrollbar max-w-[70vw]">
                   <button
                      onClick={() => setActiveTab('CREATE')}
-                     className={`px-6 py-3 rounded-xl text-sm font-bold flex items-center gap-2 transition-all whitespace-nowrap ${activeTab === 'CREATE' ? 'bg-white text-indigo-600 shadow-md' : 'text-gray-500'}`}
+                     className={`px-5 py-2.5 rounded-xl border text-sm font-bold flex items-center gap-2 transition-colors whitespace-nowrap ${activeTab === 'CREATE' ? 'border-[#00A7A0] bg-white text-indigo-600 shadow-md' : 'text-gray-500'}`}
                   >
                      <ShoppingCart size={20} /> Pedido
                   </button>
                   <button
                      onClick={() => setActiveTab('RECEIVE')}
-                     className={`px-6 py-3 rounded-xl text-sm font-bold flex items-center gap-2 transition-all whitespace-nowrap ${activeTab === 'RECEIVE' ? 'bg-white text-green-600 shadow-md' : 'text-gray-500'}`}
+                     className={`px-5 py-2.5 rounded-xl border text-sm font-bold flex items-center gap-2 transition-colors whitespace-nowrap ${activeTab === 'RECEIVE' ? 'border-[#00A7A0] bg-white text-green-600 shadow-md' : 'text-gray-500'}`}
                   >
                      <Archive size={20} /> Recepción
                      {activeOrders.length > 0 && <span className="bg-green-500 text-white text-[10px] px-1.5 rounded-full">{activeOrders.length}</span>}
@@ -1542,14 +1542,14 @@ const SupplyChainManager: React.FC<SupplyChainManagerProps> = ({
 
                   <button
                      onClick={() => setActiveTab('ALERTS')}
-                     className={`px-6 py-3 rounded-xl text-sm font-bold flex items-center gap-2 transition-all whitespace-nowrap ${activeTab === 'ALERTS' ? 'bg-white text-red-600 shadow-md' : 'text-gray-500'}`}
+                     className={`px-5 py-2.5 rounded-xl border text-sm font-bold flex items-center gap-2 transition-colors whitespace-nowrap ${activeTab === 'ALERTS' ? 'border-[#00A7A0] bg-white text-red-600 shadow-md' : 'text-gray-500'}`}
                   >
                      <AlertTriangle size={20} /> Alertas
                      {lowStockProducts.length > 0 && <span className="bg-red-500 text-white text-[10px] px-1.5 rounded-full">{lowStockProducts.length}</span>}
                   </button>
                   <button
                      onClick={() => setActiveTab('SUPPLIERS')}
-                     className={`px-6 py-3 rounded-xl text-sm font-bold flex items-center gap-2 transition-all whitespace-nowrap ${activeTab === 'SUPPLIERS' ? 'bg-white text-orange-600 shadow-md' : 'text-gray-500'}`}
+                     className={`px-5 py-2.5 rounded-xl border text-sm font-bold flex items-center gap-2 transition-colors whitespace-nowrap ${activeTab === 'SUPPLIERS' ? 'border-[#00A7A0] bg-white text-orange-600 shadow-md' : 'text-gray-500'}`}
                   >
                      <Truck size={20} /> Proveedores
                   </button>
