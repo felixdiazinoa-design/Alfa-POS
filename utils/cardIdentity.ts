@@ -82,26 +82,49 @@ export const identifyCard = (rawValue: string, customers: Customer[] = []): Card
         const ref = String((json?.card as string) || tail || head || '').trim();
         const name = typeof json?.name === 'string' ? json.name : undefined;
         const points = Number.isFinite(Number(json?.points)) ? Number(json.points) : undefined;
+        // Se resuelve el socio aquí para que el lector tenga siempre un id de
+        // cliente, venga el QR del formato nuevo o del antiguo.
+        const cardNumber = String((typeof json?.card === 'string' ? json.card : (tail || ref)) || '').trim();
+        const owner = customers.find((candidate) => {
+            const numbers = [
+                ...(candidate.cards || []).map(entry => String(entry.cardNumber || '')),
+                String(candidate.loyalty?.cardNumber || ''),
+                ...((candidate as unknown as { metadata?: { loyaltyCards?: Array<{ cardNumber?: string }> } })
+                    .metadata?.loyaltyCards || []).map(entry => String(entry?.cardNumber || '')),
+            ].filter(Boolean).map(value => value.toUpperCase());
+            return numbers.includes(cardNumber.toUpperCase()) || String(candidate.id) === ref;
+        });
+
         return {
             kind: 'EGO_CLUB',
-            ref,
+            ref: owner ? String(owner.id) : ref,
             raw,
-            name,
-            points,
-            cardNumber: typeof json?.card === 'string' ? json.card : (tail || undefined),
+            name: name || owner?.name,
+            points: points ?? (owner ? Number(owner.loyaltyPoints || 0) : undefined),
+            cardNumber: cardNumber || undefined,
         };
     }
 
     const normalized = raw.toUpperCase();
+    const cardNumbersOf = (candidate: Customer): string[] => {
+        const fromCards = (candidate.cards || []).map(entry => String(entry.cardNumber || '')).filter(Boolean);
+        const fromLoyalty = String(candidate.loyalty?.cardNumber || '');
+        // El ERP del grupo entrega las tarjetas dentro de metadata.loyaltyCards.
+        const metaCards = (candidate as unknown as { metadata?: { loyaltyCards?: Array<{ cardNumber?: string }> } })
+            .metadata?.loyaltyCards || [];
+        return [
+            ...fromCards,
+            ...(fromLoyalty ? [fromLoyalty] : []),
+            ...metaCards.map(entry => String(entry?.cardNumber || '')).filter(Boolean),
+        ];
+    };
+
     const match = customers.find((candidate) => {
-        const cardNumber = String(candidate.cards?.find(entry => entry.type === 'LOYALTY')?.cardNumber
-            || candidate.loyalty?.cardNumber
-            || '');
+        if (cardNumbersOf(candidate).some(card => card.toUpperCase() === normalized)) return true;
         return [
             String(candidate.id || ''),
             String(candidate.customerCode || ''),
             String(candidate.taxId || ''),
-            cardNumber,
         ].some(value => value && value.trim().toUpperCase() === normalized);
     });
 

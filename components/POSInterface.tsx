@@ -9360,10 +9360,15 @@ const POSInterface: React.FC<POSInterfaceProps> = ({
                customers={customers}
                onClose={() => setShowCardReader(false)}
                onCustomer={(customer) => {
+                  // Todo se resuelve en el lector: se asigna el socio y se cierra.
+                  // Antes se abría el modal antiguo de 'Tarjeta de Lealtad', que
+                  // volvía a pedir el código y no lo encontraba.
                   onSelectCustomer(customer);
                   setShowCardReader(false);
-                  const hasEgoClub = Boolean(customer.tier) || (customer.loyaltyPoints || 0) > 0;
-                  if (hasEgoClub) setShowLoyaltyModal(true);
+                  const points = Number(customer.loyaltyPoints || 0);
+                  setSuccessToast(points > 0
+                     ? `${customer.name} · ${points.toLocaleString('es-DO')} pts EGO Club`
+                     : `${customer.name} asignado al ticket`);
                }}
                onUnknown={() => undefined}
             />

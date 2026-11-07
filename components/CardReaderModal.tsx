@@ -42,13 +42,10 @@ const CardReaderModal: React.FC<CardReaderModalProps> = ({ customers, onCustomer
                 onUnknown(identity);
                 return;
             }
-            const customer = customers.find(entry => String(entry.id) === identity.ref)
-                || customers.find(entry => {
-                    const cardNumber = String(entry.cards?.find(card => card.type === 'LOYALTY')?.cardNumber
-                        || entry.loyalty?.cardNumber
-                        || '');
-                    return cardNumber && cardNumber.toUpperCase() === String(identity.cardNumber || '').toUpperCase();
-                });
+            // `identifyCard` ya devuelve la referencia del socio cuando el código
+            // coincide con su id o con cualquiera de sus tarjetas (incluidas las
+            // que el ERP entrega en metadata.loyaltyCards).
+            const customer = customers.find(entry => String(entry.id) === identity.ref);
             if (!customer) {
                 setStatus(`${describeCardKind(identity.kind)} de otra caja: ${identity.ref}`);
                 onUnknown(identity);
