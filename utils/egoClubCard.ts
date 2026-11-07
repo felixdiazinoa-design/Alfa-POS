@@ -1,6 +1,7 @@
 import { dbAdapter } from '../services/db';
 import { getTierLabel, normalizeTier, pointsToCurrency } from './egoClub';
 import type { BusinessConfig, Customer, LoyaltyTierId } from '../types';
+import { buildEgoClubQrContent } from './cardIdentity';
 
 /**
  * Tarjeta digital del socio EGO Club (T7).
@@ -63,13 +64,7 @@ export const getEgoClubCardSnapshot = async (customerId: string): Promise<EgoClu
  * Payload del QR: identifica al socio sin exponer datos sensibles.
  * Se prefiere el número de tarjeta del programa; si no hay, el id del cliente.
  */
-export const buildEgoClubQrPayload = (customer: Customer): string => {
-    const loyaltyCard = customer.cards?.find(card => card.type === 'LOYALTY' && card.status === 'ACTIVE')
-        || customer.cards?.[0]
-        || customer.loyalty;
-    const memberId = loyaltyCard?.cardNumber || customer.id;
-    return `EGOCLUB:${memberId}`;
-};
+export const buildEgoClubQrPayload = (customer: Customer): string => buildEgoClubQrContent(customer);
 
 /** Texto relativo de frescura del dato, sin dependencias de locale. */
 export const formatUpdatedAgo = (iso: string | undefined, now: Date = new Date()): string => {

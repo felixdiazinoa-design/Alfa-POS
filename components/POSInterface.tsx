@@ -75,6 +75,7 @@ import { requestJson } from '../services/network/httpClient';
 import ProductTableSupermarket from './ProductTableSupermarket';
 import { countPendingLoyaltyOperations } from '../utils/loyaltyOutbox';
 import LoyaltySyncPanel from './LoyaltySyncPanel';
+import CardReaderModal from './CardReaderModal';
 import { resolveErpSyncApiBase } from '../utils/erpBaseUrl';
 import SupermarketTicketSummary from './SupermarketTicketSummary';
 import BarcodeScannerModal from './BarcodeScannerModal';
@@ -2292,6 +2293,7 @@ const POSInterface: React.FC<POSInterfaceProps> = ({
    // Operaciones de lealtad en cola: alimenta el chip 'N pendientes' del resumen.
    const [pendingLoyaltyOps, setPendingLoyaltyOps] = useState(0);
    const [showLoyaltySyncPanel, setShowLoyaltySyncPanel] = useState(false);
+   const [showCardReader, setShowCardReader] = useState(false);
    // Alcanzabilidad real del ERP: distinto de estar "online" en la red local.
    const [erpReachable, setErpReachable] = useState(true);
    const [showSplitModal, setShowSplitModal] = useState(false);
@@ -7168,7 +7170,11 @@ const POSInterface: React.FC<POSInterfaceProps> = ({
             if (!showTableMapButton) break;
             void handleBackToMap();
             break;
-         case 'loyalty_card': setShowLoyaltyModal(true); break;
+         case 'loyalty_card':
+            // Antes solo mostraba la tarjeta del cliente ya seleccionado. Ahora
+            // abre el lector, que acepta cualquier tarjeta y la clasifica.
+            setShowCardReader(true);
+            break;
          case 'HISTORY': onOpenHistory(); break;
       }
    };
@@ -9348,6 +9354,20 @@ const POSInterface: React.FC<POSInterfaceProps> = ({
                </div>
             );
          })()}
+
+         {showCardReader && (
+            <CardReaderModal
+               customers={customers}
+               onClose={() => setShowCardReader(false)}
+               onCustomer={(customer) => {
+                  onSelectCustomer(customer);
+                  setShowCardReader(false);
+                  const hasEgoClub = Boolean(customer.tier) || (customer.loyaltyPoints || 0) > 0;
+                  if (hasEgoClub) setShowLoyaltyModal(true);
+               }}
+               onUnknown={() => undefined}
+            />
+         )}
 
          {showLoyaltySyncPanel && (
             <LoyaltySyncPanel
