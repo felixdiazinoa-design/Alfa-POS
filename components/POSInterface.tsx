@@ -2252,13 +2252,32 @@ const POSInterface: React.FC<POSInterfaceProps> = ({
    }, [searchTerm]);
 
    const handleCatalogSearchInput = useCallback((value: string) => {
+      // Tarjeta digital EGO Club: el QR trae "EGOCLUB:<id o tarjeta>". Al leerlo
+      // con el escáner no debe buscar un producto, sino seleccionar al socio.
+      const clubMatch = /^EGOCLUB:(.+)$/i.exec(String(value || '').trim());
+      if (clubMatch) {
+         const ref = clubMatch[1].trim();
+         const match = (customers || []).find(candidate => (
+            String(candidate.id) === ref
+            || String((candidate as { cardNumber?: string }).cardNumber || '') === ref
+            || String(candidate.loyalty?.cardNumber || '') === ref
+         ));
+         setSearchTerm('');
+         if (match) {
+            onSelectCustomer(match);
+            setSuccessToast(`Socio EGO Club: ${match.name}`);
+         } else {
+            setSuccessToast('Tarjeta EGO Club no encontrada en esta caja');
+         }
+         return;
+      }
       const trace = beginPosInteraction('PRODUCT_SEARCH_INPUT', { inputLength: value.length });
       searchFilterTraceRef.current = trace;
       expectInteractionRender(trace, 'POS_INTERACTION_VIEW');
       setSearchTerm(value);
       markInteractionStateUpdate(trace, 1);
       markInteractionStage(trace, 'HANDLER_END');
-   }, []);
+   }, [customers, onSelectCustomer, setSuccessToast]);
    const [categoryFilter, setCategoryFilter] = useState('ALL');
    const [mobileView, setMobileView] = useState<'PRODUCTS' | 'TICKET'>('PRODUCTS');
    const returnToTicketView = useCallback(() => {
