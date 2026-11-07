@@ -578,3 +578,28 @@
   border-color: #00A7A0;
   color: #FFFFFF;
 }
+
+/* El avatar tenía borde y fondo propios dentro de una tarjeta también blanca:
+   se veían dos recuadros anidados. Se deja una sola caja. */
+.modern-user-avatar-wrapper {
+  padding: 0;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+.modern-user-card.active .modern-user-avatar-wrapper {
+  border: none;
+  box-shadow: none;
+}
+.modern-user-avatar {
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  color: #1B3034;
+}
+.modern-user-card.active .modern-user-avatar {
+  background: #00A7A0;
+  border: none;
+  color: #FFFFFF;
+}
