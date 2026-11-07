@@ -36,6 +36,13 @@ export default function SupermarketTicketSummary({ symbol, subtotal, discount, t
   const money = (value: number) => symbol + value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   return <section className="supermarket-footer-summary" aria-label="Resumen del ticket">
     <div className="mb-3 flex flex-wrap items-center gap-2">
+      <div className="rounded-lg bg-blue-100 px-3 py-2 text-blue-900">
+        <span className="text-base font-black tabular-nums">{units}</span>
+        <span className="ml-1.5 text-[11px] font-bold">{units === 1 ? 'unidad' : 'unidades'}</span>
+      </div>
+      {points > 0 && <div className="rounded-lg bg-purple-100 px-3 py-1.5 text-purple-800 text-[11px] font-bold">Ganarás <strong className="text-sm tabular-nums">{points}</strong> puntos</div>}
+      {/* El comprobante va al final de la fila: con ml-auto se ancla a la derecha
+          sin desplazar las unidades, que se quedan donde estaban. */}
       {fiscalLabel && (
         <span
           className="ml-auto inline-flex h-6 items-center gap-1 rounded-md bg-[#F5FBEA] px-1.5 text-[9px] font-black uppercase tracking-wide text-[#5B7A18]"
@@ -45,12 +52,6 @@ export default function SupermarketTicketSummary({ symbol, subtotal, discount, t
           {fiscalLabel}
         </span>
       )}
-
-      <div className="rounded-lg bg-blue-100 px-3 py-2 text-blue-900">
-        <span className="text-base font-black tabular-nums">{units}</span>
-        <span className="ml-1.5 text-[11px] font-bold">{units === 1 ? 'unidad' : 'unidades'}</span>
-      </div>
-      {points > 0 && <div className="rounded-lg bg-purple-100 px-3 py-1.5 text-purple-800 text-[11px] font-bold">Ganarás <strong className="text-sm tabular-nums">{points}</strong> puntos</div>}
     </div>
     {/* Los importes se solapaban en la caja porque las columnas podían
         encogerse. Se fija con estilos en línea: ninguna clase los sobrescribe. */}
