@@ -321,10 +321,24 @@ export interface InventoryCountSnapshotItem {
   avgCost: number;
 }
 
+export interface InventoryLocation {
+  id: string;
+  warehouseId: string;
+  name: string;
+  code?: string;
+  type?: 'ZONA' | 'PASILLO' | 'ESTANTE' | 'BIN' | 'PISO';
+  active?: boolean;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
 export interface InventoryCountSession {
   id: string;
   warehouseId: string;
   warehouseName?: string;
+  /** Zona/ubicación contada. Vacío = almacén completo. */
+  locationLabel?: string;
+  locationId?: string;
   createdAt: string;
   finalizedAt?: string;
   status?: 'OPEN' | 'FINALIZED';
@@ -2279,6 +2293,8 @@ export interface Reception {
   receivedByUserName: string;
   items: PurchaseOrderItem[];
   terminalId?: string;
+  /** Clave estable del intento de recepción; el ERP puede usarla para deduplicar. */
+  idempotencyKey?: string;
   syncStatus?: SyncStatus;
   syncError?: string;
   updatedAt?: string;

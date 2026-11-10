@@ -25,6 +25,7 @@ import {
 import { db } from '../../utils/db';
 import BarcodeScannerModal from '../BarcodeScannerModal';
 import { OfflineReceiptPayload, useOfflineSync } from '../../hooks/useOfflineSync';
+import { buildReceptionIdempotencyKey, receptionDocumentKey } from '../../utils/receptionIdempotency';
 
 type DocumentFilter = 'PURCHASE_ORDER' | 'TRANSFER_IN';
 
@@ -109,6 +110,7 @@ const MobileReception: React.FC<MobileReceptionProps> = ({
     isSyncing,
     pendingCount,
     conflicts,
+    blockedDocumentKeys,
     syncToast,
     enqueueOfflineReceipt,
     recordOfflineScan,
@@ -186,30 +188,38 @@ const MobileReception: React.FC<MobileReceptionProps> = ({
   }, [config.inventoryScope?.defaultSalesWarehouseId, productMap, suppliers, warehouses]);
 
   const buildTransferDocument = useCallback((transfer: StockTransfer): ReceiptDocument | null => {
-    if (transfer.status !== 'IN_TRANSIT') return null;
+    if (transfer.status !== 'IN_TRANSIT' && transfer.status !== 'PARTIALLY_RECEIVED') return null;
 
     const originName = warehouses.find((warehouse) => warehouse.id === transfer.sourceWarehouseId)?.name || 'Origen desconocido';
 
     const computedLines = (transfer.items || []).map((item) => {
       const product = productMap.get(item.productId);
+      const variantSku = (item as { variantSku?: string }).variantSku;
+      const variant = variantSku ? product?.variants?.find(v => v.sku === variantSku) : undefined;
       const sentQty = Math.max(0, toSafeNumber(item.quantity));
       const alreadyReceivedQty = Math.max(0, toSafeNumber(item.receivedQuantity));
       const expectedQty = Math.max(0, sentQty - alreadyReceivedQty);
 
       return {
-        key: toLineKey(item.productId),
+        key: toLineKey(item.productId, variantSku),
         productId: item.productId,
         productName: item.productName || product?.name || item.productId,
         expectedQty,
         receivedQty: 0,
         cost: toSafeNumber(product?.cost),
         image: product?.image,
-        sku: product?.barcode || item.productId,
-        barcodes: [product?.barcode, item.productId].filter(Boolean) as string[]
+        sku: variantSku || variant?.sku || product?.barcode || item.productId,
+        variantSku,
+        variantInfo: variantSku,
+        barcodes: [variantSku, ...(variant?.barcode || []), product?.barcode, item.productId].filter(Boolean) as string[]
       } as ReceiptLine;
     }).filter((line) => line.expectedQty > 0);
 
     if (computedLines.length === 0) return null;
+
+    const totalSent = (transfer.items || []).reduce((sum, item) => sum + Math.max(0, toSafeNumber(item.quantity)), 0);
+    const totalReceived = (transfer.items || []).reduce((sum, item) => sum + Math.max(0, toSafeNumber(item.receivedQuantity)), 0);
+    const progressPct = totalSent > 0 ? Math.min(100, Math.round((totalReceived / totalSent) * 100)) : 0;
 
     return {
       id: transfer.id,
@@ -217,27 +227,34 @@ const MobileReception: React.FC<MobileReceptionProps> = ({
       code: transfer.displayId || transfer.id,
       originName,
       warehouseId: transfer.destinationWarehouseId,
-      progressPct: 0,
+      progressPct,
       lines: computedLines
     };
   }, [productMap, warehouses]);
 
   const pendingDocuments = useMemo(() => {
+    // Un documento con recepción en cola no se puede volver a recibir: al
+    // encolar offline el documento local sigue abierto, así que se oculta.
+    const blockedKeys = new Set(blockedDocumentKeys);
+    const isBlocked = (doc: ReceiptDocument) => blockedKeys.has(receptionDocumentKey(doc.type, doc.id));
+
     const orderDocs = (purchaseOrders || [])
       .filter((order) => order.status === 'ORDERED' || order.status === 'PARTIAL')
       .map(buildPurchaseOrderDocument)
-      .filter(Boolean) as ReceiptDocument[];
+      .filter(Boolean)
+      .filter((doc) => !isBlocked(doc as ReceiptDocument)) as ReceiptDocument[];
 
     const transferDocs = (transfers || [])
-      .filter((transfer) => transfer.status === 'IN_TRANSIT')
+      .filter((transfer) => transfer.status === 'IN_TRANSIT' || transfer.status === 'PARTIALLY_RECEIVED')
       .map(buildTransferDocument)
-      .filter(Boolean) as ReceiptDocument[];
+      .filter(Boolean)
+      .filter((doc) => !isBlocked(doc as ReceiptDocument)) as ReceiptDocument[];
 
     return {
       PURCHASE_ORDER: orderDocs,
       TRANSFER_IN: transferDocs
     };
-  }, [buildPurchaseOrderDocument, buildTransferDocument, purchaseOrders, transfers]);
+  }, [blockedDocumentKeys, buildPurchaseOrderDocument, buildTransferDocument, purchaseOrders, transfers]);
 
   const filteredDocuments = useMemo(() => {
     const needle = search.trim().toLowerCase();
@@ -360,7 +377,7 @@ const MobileReception: React.FC<MobileReceptionProps> = ({
   }, [terminalId]);
 
   const finalizeReceipt = async () => {
-    if (!selectedDocument) return;
+    if (!selectedDocument || isSaving) return;
 
     const hasAnyReceived = lines.some((line) => line.receivedQty > 0);
     if (!hasAnyReceived) {
@@ -368,57 +385,78 @@ const MobileReception: React.FC<MobileReceptionProps> = ({
       return;
     }
 
-    const missingItems = lines.filter((line) => line.expectedQty > line.receivedQty);
-    let discrepancyReason = '';
-
-    if (missingItems.length > 0) {
-      discrepancyReason = (await clicPrompt('Se detectaron faltantes. Indica motivo de ajuste (ej: Diferencia de despacho):', 'Diferencia de despacho'))?.trim() || '';
-      if (!discrepancyReason) {
-        alert('Debes indicar un motivo para registrar faltantes.');
-        return;
-      }
-    }
-
-    const payload: OfflineReceiptPayload = {
-      documentType: selectedDocument.type,
-      documentId: selectedDocument.id,
-      warehouseId: selectedDocument.warehouseId,
-      receivedBy: currentUser?.id || 'system',
-      receivedByUserName: currentUser?.name || 'Sistema',
-      terminalId: terminalId || 'LOCAL',
-      discrepancyReason,
-      items: lines.map((line) => ({
-        productId: line.productId,
-        productName: line.productName,
-        expectedQty: line.expectedQty,
-        receivedQty: line.receivedQty,
-        cost: line.cost,
-        variantSku: line.variantSku,
-        variantInfo: line.variantInfo
-      }))
-    };
-
-    if (!isOnline) {
-      try {
-        await enqueueOfflineReceipt(payload, {
-          documentCode: selectedDocument.code,
-          originName: selectedDocument.originName
-        });
-
-        setSelectedDocument(null);
-        setLines([]);
-        setVariantSheet(null);
-        alert('Recepción guardada. Se enviará automáticamente cuando recuperes conexión');
-      } catch (error: any) {
-        console.error('Error guardando recepción offline:', error);
-        alert(error?.message || 'No fue posible guardar la recepción en modo offline.');
-      }
-      return;
-    }
-
+    // Bloquea la doble pulsación también en la rama offline.
     setIsSaving(true);
 
     try {
+      const missingItems = lines.filter((line) => line.expectedQty > line.receivedQty);
+      const overageItems = lines.filter((line) => line.receivedQty > line.expectedQty);
+      let discrepancyReason = '';
+
+      if (missingItems.length > 0 || overageItems.length > 0) {
+        const detail = [
+          missingItems.length > 0 ? `faltantes en ${missingItems.length} línea(s)` : '',
+          overageItems.length > 0 ? `exceso en ${overageItems.length} línea(s)` : ''
+        ].filter(Boolean).join(' y ');
+        const defaultReason = missingItems.length > 0 ? 'Diferencia de despacho' : 'Exceso de despacho';
+
+        discrepancyReason = (await clicPrompt(`Se detectó ${detail}. Indica motivo de ajuste (ej: ${defaultReason}):`, defaultReason))?.trim() || '';
+        if (!discrepancyReason) {
+          alert('Debes indicar un motivo para registrar diferencias.');
+          return;
+        }
+      }
+
+      const payload: OfflineReceiptPayload = {
+        documentType: selectedDocument.type,
+        documentId: selectedDocument.id,
+        warehouseId: selectedDocument.warehouseId,
+        receivedBy: currentUser?.id || 'system',
+        receivedByUserName: currentUser?.name || 'Sistema',
+        terminalId: terminalId || 'LOCAL',
+        discrepancyReason,
+        idempotencyKey: buildReceptionIdempotencyKey({
+          documentType: selectedDocument.type,
+          documentId: selectedDocument.id,
+          receivedBy: currentUser?.id || 'system',
+          items: lines.map((line) => ({
+            productId: line.productId,
+            variantSku: line.variantSku,
+            expectedQty: line.expectedQty,
+            receivedQty: line.receivedQty
+          }))
+        }),
+        items: lines.map((line) => ({
+          productId: line.productId,
+          productName: line.productName,
+          expectedQty: line.expectedQty,
+          receivedQty: line.receivedQty,
+          cost: line.cost,
+          variantSku: line.variantSku,
+          variantInfo: line.variantInfo
+        }))
+      };
+
+      if (!isOnline) {
+        try {
+          const queued = await enqueueOfflineReceipt(payload, {
+            documentCode: selectedDocument.code,
+            originName: selectedDocument.originName
+          });
+
+          setSelectedDocument(null);
+          setLines([]);
+          setVariantSheet(null);
+          alert(queued.alreadyApplied
+            ? 'Esta recepción ya estaba registrada. No se duplicó el inventario.'
+            : 'Recepción guardada. Se enviará automáticamente cuando recuperes conexión');
+        } catch (error: any) {
+          console.error('Error guardando recepción offline:', error);
+          alert(error?.message || 'No fue posible guardar la recepción en modo offline.');
+        }
+        return;
+      }
+
       const onlinePayload = {
         ...payload,
         documentType: selectedDocument.type as 'PURCHASE_ORDER' | 'TRANSFER_IN'
@@ -548,6 +586,11 @@ const MobileReception: React.FC<MobileReceptionProps> = ({
             <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-10 text-center">
               <ClipboardList className="mx-auto text-gray-300 mb-3" size={36} />
               <p className="font-black text-gray-500">No hay documentos pendientes</p>
+              {blockedDocumentKeys.length > 0 && (
+                <p className="mt-2 text-xs font-bold text-amber-700">
+                  {blockedDocumentKeys.length} documento(s) con recepción esperando sincronizar.
+                </p>
+              )}
             </div>
           )}
 

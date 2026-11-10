@@ -10,7 +10,10 @@ import java.net.ServerSocket
 import java.net.Socket
 import java.net.URLDecoder
 import java.nio.charset.StandardCharsets
+import java.text.SimpleDateFormat
 import java.util.Collections
+import java.util.Locale
+import java.util.TimeZone
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Executors
@@ -23,6 +26,7 @@ object ClicPOSMasterHttpServer {
     private const val PREFS_BINDINGS_KEY = "terminal_device_bindings"
     private const val PREFS_RESTAURANT_KEY = "restaurant_state"
     private const val TABLE_EDIT_LOCK_TTL_MS = 45_000L
+    private const val AUDIT_CLAIM_TTL_MS = 15 * 60 * 1000L
     private val running = AtomicBoolean(false)
     private val executor = Executors.newCachedThreadPool()
     private var serverSocket: ServerSocket? = null
@@ -39,6 +43,7 @@ object ClicPOSMasterHttpServer {
     private val catalogVersions = ConcurrentHashMap<String, Long>()
     private val productRoutingOverrides = ConcurrentHashMap<String, JSONObject>()
     private val tableEditLocks = ConcurrentHashMap<String, JSONObject>()
+    private val auditSessions = ConcurrentHashMap<String, JSONObject>()
     @Volatile private var restaurantStateLoaded = false
 
     fun start(
@@ -221,6 +226,22 @@ object ClicPOSMasterHttpServer {
                         writeResponse(client, 200, configSnapshot.toString())
                     method == "GET" && path == "/api/users" ->
                         writeResponse(client, 200, usersSnapshot.toString())
+                    method == "GET" && path.startsWith("/api/audit/active/") ->
+                        handleAuditActive(client, path.removePrefix("/api/audit/active/"))
+                    method == "POST" && path == "/api/audit/start" ->
+                        handleAuditStart(client, body)
+                    method == "POST" && path.startsWith("/api/audit/") && path.endsWith("/heartbeat") ->
+                        handleAuditHeartbeat(
+                            client,
+                            path.removePrefix("/api/audit/").removeSuffix("/heartbeat"),
+                            body
+                        )
+                    method == "POST" && path.startsWith("/api/audit/") && path.endsWith("/release") ->
+                        handleAuditRelease(
+                            client,
+                            path.removePrefix("/api/audit/").removeSuffix("/release"),
+                            body
+                        )
                     method == "GET" && path == "/api/mesas" ->
                         writeResponse(client, 200, buildRestaurantSnapshot().toString())
                     method == "POST" && path == "/api/mesas/bloquear" ->
@@ -837,6 +858,186 @@ object ClicPOSMasterHttpServer {
 
     private fun parseJsonBody(body: String): JSONObject =
         if (body.isBlank()) JSONObject() else JSONObject(body)
+
+    // --- BLOQUEO DE CONTEO DE INVENTARIO (una PDA por almacén) ---
+
+    private fun isoNow(offsetMs: Long = 0L): String {
+        val formatter = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.US)
+        formatter.timeZone = TimeZone.getTimeZone("UTC")
+        return formatter.format(java.util.Date(System.currentTimeMillis() + offsetMs))
+    }
+
+    private fun cleanupExpiredAuditSessions() {
+        val now = isoNow()
+        for ((sessionId, session) in auditSessions.entries) {
+            val expiresAt = session.optString("expiresAt")
+            if (expiresAt.isNotEmpty() && expiresAt < now && auditSessions.remove(sessionId, session)) {
+                continue
+            }
+        }
+    }
+
+    private fun findAuditSessionForWarehouse(warehouseId: String): JSONObject? {
+        cleanupExpiredAuditSessions()
+        return auditSessions.values.firstOrNull { it.optString("warehouseId") == warehouseId }
+    }
+
+    private fun findAuditSessionForScope(scopeKey: String): JSONObject? {
+        cleanupExpiredAuditSessions()
+        return auditSessions.values.firstOrNull { it.optString("scopeKey") == scopeKey }
+    }
+
+    private fun buildAuditScopeKey(input: JSONObject, warehouseId: String): String {
+        val requested = input.optString("scopeKey").trim()
+        return if (requested.startsWith("$warehouseId::")) requested else "$warehouseId::*"
+    }
+
+    private fun handleAuditActive(socket: Socket, rawWarehouseId: String) {
+        val warehouseId = URLDecoder.decode(rawWarehouseId, StandardCharsets.UTF_8.name())
+        val session = findAuditSessionForWarehouse(warehouseId)
+        val payload = JSONObject().put("session", session ?: JSONObject.NULL)
+        writeResponse(socket, 200, payload.toString())
+    }
+
+    private fun handleAuditStart(socket: Socket, body: String) {
+        val input = parseJsonBody(body)
+        val warehouseId = input.optString("warehouseId").trim()
+
+        if (warehouseId.isEmpty()) {
+            writeResponse(socket, 400, JSONObject()
+                .put("success", false)
+                .put("error", "WAREHOUSE_REQUIRED")
+                .toString())
+            return
+        }
+
+        // El claim es exclusivo: se decide dentro del lock para que dos PDAs
+        // simultáneas no puedan crear dos sesiones para el mismo almacén.
+        val result = synchronized(auditSessions) {
+            claimAuditSession(input, warehouseId)
+        }
+        val status = result.optInt("_httpStatus", 200)
+        result.remove("_httpStatus")
+        writeResponse(socket, status, result.toString())
+    }
+
+    private fun claimAuditSession(input: JSONObject, warehouseId: String): JSONObject {
+        val deviceId = input.optString("deviceId").trim()
+        val scopeKey = buildAuditScopeKey(input, warehouseId)
+        val locationLabel = input.optString("locationLabel").trim()
+        val existing = findAuditSessionForScope(scopeKey)
+
+        if (existing != null) {
+            val holderDevice = existing.optString("deviceId").trim()
+
+            if (deviceId.isNotEmpty() && holderDevice == deviceId) {
+                return JSONObject()
+                    .put("_httpStatus", 200)
+                    .put("success", true)
+                    .put("reused", true)
+                    .put("session", existing)
+            }
+
+            if (!input.optBoolean("force", false)) {
+                return JSONObject()
+                    .put("_httpStatus", 409)
+                    .put("success", false)
+                    .put("error", "AUDIT_SESSION_IN_PROGRESS")
+                    .put("holder", existing)
+            }
+
+            auditSessions.remove(existing.optString("id"))
+        }
+
+        val session = JSONObject()
+            .put("id", UUID.randomUUID().toString())
+            .put("warehouseId", warehouseId)
+            .put("scopeKey", scopeKey)
+            .put("locationLabel", locationLabel)
+            .put("startedAt", isoNow())
+            .put("expiresAt", isoNow(AUDIT_CLAIM_TTL_MS))
+            .put("heartbeatAt", isoNow())
+            .put("deviceId", deviceId)
+            .put("terminalId", input.optString("terminalId"))
+            .put("userId", input.optString("userId"))
+            .put("userName", input.optString("userName"))
+            .put("status", "OPEN")
+
+        auditSessions[session.getString("id")] = session
+
+        return JSONObject()
+            .put("_httpStatus", 200)
+            .put("success", true)
+            .put("reused", false)
+            .put("session", session)
+    }
+
+    private fun handleAuditHeartbeat(socket: Socket, rawSessionId: String, body: String) {
+        val sessionId = URLDecoder.decode(rawSessionId, StandardCharsets.UTF_8.name())
+        cleanupExpiredAuditSessions()
+
+        val session = auditSessions[sessionId]
+        if (session == null) {
+            writeResponse(socket, 409, JSONObject()
+                .put("success", false)
+                .put("error", "AUDIT_SESSION_CLOSED")
+                .toString())
+            return
+        }
+
+        val deviceId = parseJsonBody(body).optString("deviceId").trim()
+        val holderDevice = session.optString("deviceId").trim()
+
+        if (holderDevice.isNotEmpty() && deviceId.isNotEmpty() && holderDevice != deviceId) {
+            writeResponse(socket, 409, JSONObject()
+                .put("success", false)
+                .put("error", "AUDIT_SESSION_OWNED_BY_OTHER")
+                .put("holder", session)
+                .toString())
+            return
+        }
+
+        session.put("heartbeatAt", isoNow())
+        session.put("expiresAt", isoNow(AUDIT_CLAIM_TTL_MS))
+        auditSessions[sessionId] = session
+
+        writeResponse(socket, 200, JSONObject()
+            .put("success", true)
+            .put("expiresAt", session.optString("expiresAt"))
+            .toString())
+    }
+
+    private fun handleAuditRelease(socket: Socket, rawSessionId: String, body: String) {
+        val sessionId = URLDecoder.decode(rawSessionId, StandardCharsets.UTF_8.name())
+        cleanupExpiredAuditSessions()
+
+        val session = auditSessions[sessionId]
+        if (session == null) {
+            writeResponse(socket, 200, JSONObject()
+                .put("success", true)
+                .put("alreadyClosed", true)
+                .toString())
+            return
+        }
+
+        val input = parseJsonBody(body)
+        val deviceId = input.optString("deviceId").trim()
+        val holderDevice = session.optString("deviceId").trim()
+
+        if (holderDevice.isNotEmpty() && deviceId.isNotEmpty() && holderDevice != deviceId &&
+            !input.optBoolean("force", false)
+        ) {
+            writeResponse(socket, 409, JSONObject()
+                .put("success", false)
+                .put("error", "AUDIT_SESSION_OWNED_BY_OTHER")
+                .put("holder", session)
+                .toString())
+            return
+        }
+
+        auditSessions.remove(sessionId)
+        writeResponse(socket, 200, JSONObject().put("success", true).toString())
+    }
 
     private fun cleanupExpiredTableLocks(now: Long = System.currentTimeMillis()) {
         var removed = false

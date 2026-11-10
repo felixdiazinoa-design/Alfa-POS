@@ -6,10 +6,12 @@
  */
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ScanBarcode, Plus, Minus, Save, X, Camera, Cloud, Wifi, WifiOff } from 'lucide-react';
+import { ScanBarcode, Plus, Minus, Save, X, Camera, Cloud, Wifi, WifiOff, AlertTriangle, ShieldCheck } from 'lucide-react';
 import { Product } from '../../types';
 import BarcodeScannerModal from '../BarcodeScannerModal';
 import { useOfflineSync } from '../../hooks/useOfflineSync';
+import { useInventoryCountClaim } from '../../hooks/useInventoryCountClaim';
+import InventoryScopePicker from './InventoryScopePicker';
 import { filterInventoryProducts, findExactInventoryProduct } from '../../utils/inventoryProductSearch';
 import {
     inventoryScannerPreferenceKey,
@@ -59,6 +61,21 @@ const InventoryCount: React.FC<InventoryCountProps> = ({
         resolveConflict,
         clearSyncToast
     } = useOfflineSync();
+
+    // Alcance del conteo: almacén completo o una ubicación concreta.
+    const [scope, setScope] = useState<{ label: string | null; locationId: string | null } | null>(null);
+
+    // Una sola PDA puede tener el alcance en conteo. El bloqueo vive en el
+    // Master; si no existe o no responde, el conteo sigue siendo posible pero
+    // sin exclusividad (se avisa en pantalla).
+    const claim = useInventoryCountClaim({
+        warehouseId,
+        locationLabel: scope?.label ?? null,
+        terminalId,
+        userId,
+        userName,
+        enabled: Boolean(scope)
+    });
 
     const [counts, setCounts] = useState<CountedItem[]>([]);
     const [scanInput, setScanInput] = useState('');
@@ -273,26 +290,131 @@ const InventoryCount: React.FC<InventoryCountProps> = ({
                 id: sessionId,
                 warehouseId: warehouseId || '',
                 warehouseName: warehouseName || '',
+                locationLabel: scope?.label ?? null,
+                locationId: scope?.locationId ?? null,
                 items: counts.map(c => ({ ...c, warehouseId })),
                 startedAt,
                 finishedAt: new Date().toISOString(),
                 terminalId,
                 userId,
-                userName
+                userName,
+                claimSessionId: claim.session?.id || null
             };
 
             await enqueueOfflineCount(payload);
             setCounts([]); // Clear local session
-            alert('Conteo guardado en cola de sincronización.');
+
+            // Con red, se empuja al master de inmediato; si falla, queda en cola.
+            if (navigator.onLine) {
+                await processPendingQueue().catch(console.error);
+            }
+
+            await claim.release();
+
+            alert(navigator.onLine
+                ? 'Conteo guardado y enviado al master.'
+                : 'Conteo guardado en cola de sincronización.');
             onCancel(); // Return to home
         }
     };
+
+    const handleTakeOver = async () => {
+        const reason = (await clicPrompt(
+            'Otra PDA tiene este almacén en conteo. Indica el motivo para tomar el control:',
+            'Cambio de turno'
+        ))?.trim();
+
+        if (!reason) return;
+        await claim.takeOver(reason);
+    };
+
+    if (!scope) {
+        return (
+            <InventoryScopePicker
+                warehouseId={warehouseId}
+                warehouseName={warehouseName}
+                onConfirm={setScope}
+                onCancel={onCancel}
+            />
+        );
+    }
+
+    if (claim.state === 'CHECKING') {
+        return (
+            <div className="min-h-screen bg-gray-50 flex items-center justify-center p-6">
+                <div className="w-full max-w-sm rounded-2xl border border-gray-200 bg-white p-8 text-center shadow-sm">
+                    <Cloud className="mx-auto mb-3 text-blue-600 animate-pulse" size={36} />
+                    <p className="font-black text-gray-800">Reservando el almacén…</p>
+                    <p className="mt-1 text-xs font-bold text-gray-500">{claim.scopeLabel}</p>
+                </div>
+            </div>
+        );
+    }
+
+    if (claim.state === 'BLOCKED') {
+        const holder = claim.holder;
+        const holderLabel = holder?.userName || holder?.terminalId || 'otro equipo';
+        const since = holder?.startedAt
+            ? new Date(holder.startedAt).toLocaleTimeString('es-DO', { hour: '2-digit', minute: '2-digit' })
+            : null;
+
+        return (
+            <div className="min-h-screen bg-gray-50 flex items-center justify-center p-6">
+                <div className="w-full max-w-sm rounded-2xl border-2 border-amber-300 bg-white p-6 shadow-sm">
+                    <div className="flex items-center gap-2 text-amber-600">
+                        <AlertTriangle size={22} />
+                        <h2 className="font-black text-gray-900">Almacén en conteo</h2>
+                    </div>
+
+                    <p className="mt-3 text-sm font-bold text-gray-600">
+                        <span className="text-gray-900">{claim.scopeLabel}</span> de {warehouseName || 'este almacén'} lo está contando{' '}
+                        <span className="text-gray-900">{holderLabel}</span>
+                        {since ? ` desde las ${since}` : ''}.
+                    </p>
+
+                    <p className="mt-2 text-[11px] font-bold text-gray-400">
+                        Solo un equipo puede contar la misma ubicación a la vez para evitar conteos duplicados.
+                    </p>
+
+                    <div className="mt-5 grid gap-2">
+                        <button
+                            onClick={handleTakeOver}
+                            className="min-h-[52px] rounded-2xl bg-amber-500 px-4 text-sm font-black text-white active:scale-[0.98]"
+                        >
+                            Tomar el control
+                        </button>
+                        <button
+                            onClick={onCancel}
+                            className="min-h-[52px] rounded-2xl border-2 border-gray-200 bg-white px-4 text-sm font-black text-gray-700 active:scale-[0.98]"
+                        >
+                            Volver
+                        </button>
+                    </div>
+                </div>
+            </div>
+        );
+    }
 
     return (
         <div className="min-h-screen bg-gray-50 flex flex-col">
             {!isOnline && (
                 <div className="sticky top-0 z-30 h-7 bg-amber-100 border-b border-amber-200 text-amber-800 text-[11px] font-bold flex items-center justify-center">
                     Modo Offline: Los datos se guardarán localmente
+                </div>
+            )}
+            {claim.state === 'CLAIMED' && (
+                <div className="sticky top-0 z-30 h-7 bg-emerald-100 border-b border-emerald-200 text-emerald-800 text-[11px] font-bold flex items-center justify-center gap-1">
+                    <ShieldCheck size={12} /> {claim.scopeLabel} reservado para esta PDA
+                </div>
+            )}
+            {claim.state === 'UNSUPPORTED' && (
+                <div className="sticky top-0 z-30 h-7 bg-gray-100 border-b border-gray-200 text-gray-600 text-[11px] font-bold flex items-center justify-center">
+                    Este master no bloquea el almacén: otro equipo podría contar a la vez.
+                </div>
+            )}
+            {claim.state === 'UNAVAILABLE' && (
+                <div className="sticky top-0 z-30 h-7 bg-amber-100 border-b border-amber-200 text-amber-800 text-[11px] font-bold flex items-center justify-center">
+                    Sin conexión con el master: el almacén no quedó reservado.
                 </div>
             )}
 
@@ -304,7 +426,7 @@ const InventoryCount: React.FC<InventoryCountProps> = ({
                         {warehouseName && (
                             <div className="flex items-center gap-1.5 text-blue-100 font-bold text-sm bg-black/10 px-2 py-0.5 rounded-lg w-fit">
                                 <span className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></span>
-                                {warehouseName}
+                                {warehouseName} · {claim.scopeLabel}
                             </div>
                         )}
                     </div>

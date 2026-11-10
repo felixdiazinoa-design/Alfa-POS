@@ -98,7 +98,7 @@ const InventoryAuditClosure: React.FC<InventoryAuditClosureProps> = ({
         warehouseName: warehouseNameById.get(s.warehouseId) || 'Unknown',
         createdAt: s.startedAt,
         finalizedAt: s.closedAt,
-        status: s.status === 'CLOSED' ? 'FINALIZED' : 'OPEN',
+        status: ['CLOSED', 'CANCELLED', 'EXPIRED', 'TAKEN_OVER'].includes(String(s.status)) ? 'FINALIZED' : 'OPEN',
         createdBy: 'SYSTEM', // or populate from parsing s.notes if strictly needed
         createdByName: 'Sistema',
         items: s.items.map((item: any) => {

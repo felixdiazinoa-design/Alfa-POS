@@ -362,6 +362,23 @@ db.exec(`
 
 ensureColumn('currency_audit_logs', 'source', 'TEXT');
 
+// Claim de auditoría: una sola PDA puede tener el almacén en conteo.
+for (const [column, definition] of [
+    ['deviceId', 'TEXT'],
+    ['terminalId', 'TEXT'],
+    ['userId', 'TEXT'],
+    ['userName', 'TEXT'],
+    ['heartbeatAt', 'TEXT'],
+    ['expiresAt', 'TEXT'],
+    ['takeoverReason', 'TEXT'],
+    ['scopeKey', 'TEXT'],
+    ['locationLabel', 'TEXT'],
+] as const) {
+    ensureColumn('audit_sessions', column, definition);
+}
+ensureIndex('idx_audit_sessions_open_warehouse', 'audit_sessions', ['warehouseId', 'status']);
+ensureIndex('idx_audit_sessions_scope', 'audit_sessions', ['scopeKey', 'status']);
+
 try {
     db.exec(`ALTER TABLE products ADD COLUMN version INTEGER DEFAULT 0`);
 } catch (e) {

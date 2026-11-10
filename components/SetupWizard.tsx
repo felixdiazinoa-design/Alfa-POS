@@ -416,6 +416,7 @@ const SetupWizard: React.FC<SetupWizardProps> = ({ initialConfig, onComplete, on
         'inventorySnapshots',
         'inventoryAuditLogs',
         'inventoryCounts',
+        'locations',
         'offline_receptions',
         'offline_reception_queue',
         'offline_reception_conflicts',
