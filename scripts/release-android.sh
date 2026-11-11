@@ -7,12 +7,21 @@ REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 COMMON_GIT_DIR="$(git -C "${REPO_ROOT}" rev-parse --path-format=absolute --git-common-dir)"
 SOURCE_REPO_ROOT="$(dirname "${COMMON_GIT_DIR}")"
 WORKSPACE_ROOT="$(dirname "${SOURCE_REPO_ROOT}")"
-CANONICAL_BUILD_WORKTREE="${WORKSPACE_ROOT}/_worktrees/CLIC-POS/CLIC-POS-mobile-sqlite"
+DEFAULT_BUILD_WORKTREE="${WORKSPACE_ROOT}/_worktrees/Alfa-POS/Alfa-POS-mobile-sqlite"
+if [[ -n "${ALFA_POS_BUILD_WORKTREE:-}" ]]; then
+  CANONICAL_BUILD_WORKTREE="${ALFA_POS_BUILD_WORKTREE}"
+elif [[ -d "${DEFAULT_BUILD_WORKTREE}" ]]; then
+  CANONICAL_BUILD_WORKTREE="${DEFAULT_BUILD_WORKTREE}"
+else
+  # Alfa POS aún no tiene una worktree de build dedicada: compilar desde el repo
+  # principal es válido (el keystore vive en APK/keys y key.properties es local).
+  CANONICAL_BUILD_WORKTREE="${REPO_ROOT}"
+fi
 SOURCE_REF="${1:-origin/develop}"
-# CLIC-POS Master/Cliente communicates over the store LAN on port 3001. Keep
-# direct Gradle release builds strict, but make the canonical release protocol
-# explicitly opt in to the cleartext LAN transport required by the product.
-LAN_HTTP_ENABLED="${CLIC_POS_RELEASE_LAN_HTTP_ENABLED:-true}"
+# Alfa POS Master/Cliente se comunican por la LAN de la tienda en el puerto 3001.
+# Mantén el build directo estricto, pero el protocolo de release permite optar
+# explícitamente por el transporte HTTP LAN que usa el producto.
+LAN_HTTP_ENABLED="${ALFA_POS_RELEASE_LAN_HTTP_ENABLED:-${CLIC_POS_RELEASE_LAN_HTTP_ENABLED:-true}}"
 
 fail() {
   echo "ERROR: $*" >&2
@@ -21,7 +30,7 @@ fail() {
 
 case "${LAN_HTTP_ENABLED}" in
   true|false) ;;
-  *) fail "CLIC_POS_RELEASE_LAN_HTTP_ENABLED debe ser true o false" ;;
+  *) fail "ALFA_POS_RELEASE_LAN_HTTP_ENABLED debe ser true o false" ;;
 esac
 
 info() {
@@ -77,6 +86,19 @@ update_gradle_version() {
   ' "${gradle_file}" "${version_code}" "${version_name}"
 }
 
+# Metadatos de releases previos: repo principal + worktrees de Alfa POS.
+list_release_metadata_files() {
+  {
+    find "${REPO_ROOT}/android/app/build/outputs/apk/release" \
+      -maxdepth 1 -type f -name 'output-metadata*.json' -print 2>/dev/null || true
+    for worktree_dir in "${WORKSPACE_ROOT}/_worktrees/Alfa-POS"/*; do
+      [[ -d "${worktree_dir}" ]] || continue
+      find "${worktree_dir}/android/app/build/outputs/apk/release" \
+        -maxdepth 1 -type f -name 'output-metadata*.json' -print 2>/dev/null || true
+    done
+  } | sort -u
+}
+
 resolve_next_version_code() {
   local gradle_file="$1"
   local max_version
@@ -90,13 +112,7 @@ resolve_next_version_code() {
     if [[ "${metadata_version}" =~ ^[0-9]+$ ]] && (( metadata_version > max_version )); then
       max_version="${metadata_version}"
     fi
-  done < <(
-    for worktree_dir in "${WORKSPACE_ROOT}/_worktrees/CLIC-POS"/*; do
-      [[ -d "${worktree_dir}" ]] || continue
-      find "${worktree_dir}/android/app/build/outputs/apk/release" \
-        -maxdepth 1 -type f -name 'output-metadata*.json' -print 2>/dev/null
-    done | sort -u
-  )
+  done < <(list_release_metadata_files)
 
   echo $((max_version + 1))
 }
@@ -116,13 +132,7 @@ resolve_latest_version_name() {
       max_version_code="${metadata_version_code}"
       latest_version_name="${metadata_version_name}"
     fi
-  done < <(
-    for worktree_dir in "${WORKSPACE_ROOT}/_worktrees/CLIC-POS"/*; do
-      [[ -d "${worktree_dir}" ]] || continue
-      find "${worktree_dir}/android/app/build/outputs/apk/release" \
-        -maxdepth 1 -type f -name 'output-metadata*.json' -print 2>/dev/null
-    done | sort -u
-  )
+  done < <(list_release_metadata_files)
 
   echo "${latest_version_name}"
 }
@@ -212,24 +222,38 @@ SOURCE_COMMIT_SHORT="$(git -C "${REPO_ROOT}" rev-parse --short "${SOURCE_COMMIT}
 SOURCE_BRANCH="$(git -C "${REPO_ROOT}" rev-parse --abbrev-ref "${SOURCE_REF}" 2>/dev/null || true)"
 [[ -n "${SOURCE_BRANCH}" ]] || SOURCE_BRANCH="${SOURCE_REF}"
 
-[[ -d "${CANONICAL_BUILD_WORKTREE}" ]] || fail "No existe la worktree canónica: ${CANONICAL_BUILD_WORKTREE}"
+[[ -d "${CANONICAL_BUILD_WORKTREE}" ]] || fail "No existe el checkout de build: ${CANONICAL_BUILD_WORKTREE}"
 
 CANONICAL_STATUS="$(git -C "${CANONICAL_BUILD_WORKTREE}" status --porcelain)"
 if [[ -n "${CANONICAL_STATUS}" ]]; then
-  fail "La worktree canónica no está limpia. Corrige eso antes de compilar."
+  fail "El checkout de build no está limpio (${CANONICAL_BUILD_WORKTREE}). Corrige eso antes de compilar."
+fi
+
+# Sin worktree dedicada se compila el árbol actual del repo principal.
+if [[ "${CANONICAL_BUILD_WORKTREE}" == "${REPO_ROOT}" ]]; then
+  SOURCE_COMMIT="$(git -C "${REPO_ROOT}" rev-parse HEAD)"
+  SOURCE_COMMIT_SHORT="$(git -C "${REPO_ROOT}" rev-parse --short "${SOURCE_COMMIT}")"
+  SOURCE_BRANCH="$(git -C "${REPO_ROOT}" rev-parse --abbrev-ref HEAD)"
+  info "Build desde el repo principal: se compila HEAD (${SOURCE_COMMIT_SHORT}), no ${SOURCE_REF}."
 fi
 
 RELEASE_OUTPUT_DIR="${CANONICAL_BUILD_WORKTREE}/android/app/build/outputs/apk/release"
-RELEASE_HISTORY_DIR="${WORKSPACE_ROOT}/_releases/CLIC-POS"
+RELEASE_HISTORY_DIR="${WORKSPACE_ROOT}/_releases/Alfa-POS"
 sync_release_artifacts "${RELEASE_OUTPUT_DIR}" "${RELEASE_HISTORY_DIR}"
 
 KEY_PROPERTIES="${CANONICAL_BUILD_WORKTREE}/android/key.properties"
-KEYSTORE_FILE="${CANONICAL_BUILD_WORKTREE}/android/keys/clic-pos-release.keystore"
 LOCAL_PROPERTIES="${CANONICAL_BUILD_WORKTREE}/android/local.properties"
 
 require_file "${KEY_PROPERTIES}"
-require_file "${KEYSTORE_FILE}"
 require_file "${LOCAL_PROPERTIES}"
+
+# La ruta del keystore vive en key.properties (gitignored); no se codifica aquí.
+KEYSTORE_FILE="$(sed -n 's/^storeFile=//p' "${KEY_PROPERTIES}" | tail -n1)"
+[[ -n "${KEYSTORE_FILE}" ]] || fail "key.properties no define storeFile"
+if [[ "${KEYSTORE_FILE}" != /* ]]; then
+  KEYSTORE_FILE="${CANONICAL_BUILD_WORKTREE}/android/${KEYSTORE_FILE}"
+fi
+require_file "${KEYSTORE_FILE}"
 
 SDK_DIR="$(resolve_sdk_dir "${LOCAL_PROPERTIES}")"
 APKSIGNER="$(resolve_apksigner "${SDK_DIR}")"
@@ -261,16 +285,19 @@ info "Fuente del release: ${SOURCE_REF} (${SOURCE_COMMIT_SHORT})"
 info "VersionCode siguiente: ${NEXT_VERSION_CODE}"
 info "VersionName siguiente: ${VERSION_NAME}"
 info "HTTP LAN Master/Cliente: ${LAN_HTTP_ENABLED}"
-info "Worktree de firma: ${CANONICAL_BUILD_WORKTREE}"
+info "Checkout de build: ${CANONICAL_BUILD_WORKTREE}"
 
-# Build in the canonical checkout; signing material stays in its original location.
-git -C "${CANONICAL_BUILD_WORKTREE}" checkout --detach "${SOURCE_COMMIT}"
+# En worktree dedicada se fija el commit fuente; en el repo principal se compila
+# el árbol actual (HEAD) sin dejar el checkout en detached HEAD.
+if [[ "${CANONICAL_BUILD_WORKTREE}" != "${REPO_ROOT}" ]]; then
+  git -C "${CANONICAL_BUILD_WORKTREE}" checkout --detach "${SOURCE_COMMIT}"
+fi
 BUILD_WORKTREE="${CANONICAL_BUILD_WORKTREE}"
 info "Instalando dependencias del commit fuente"
 (cd "${BUILD_WORKTREE}" && npm ci)
 # Selective JS diagnostics deliberately do not patch Capacitor or SQLite sources.
 
-RELEASE_GATE_REPORT="$(mktemp /private/tmp/clicpos-release-gate-XXXXXX)"
+RELEASE_GATE_REPORT="$(mktemp /private/tmp/alfapos-release-gate-XXXXXX)"
 info "Ejecutando puerta antirregresión prebuild contra baseline 1.1.363"
 (cd "${BUILD_WORKTREE}" && node scripts/qa/apk-release-gate.mjs \
   --stage prebuild \
@@ -288,7 +315,7 @@ info "Ejecutando npx cap sync android"
 (cd "${BUILD_WORKTREE}" && npx cap sync android)
 
 info "Verificando assets Capacitor antes de firmar"
-ASSET_REPORT="$(mktemp /private/tmp/clicpos-packaged-assets-XXXXXX)"
+ASSET_REPORT="$(mktemp /private/tmp/alfapos-packaged-assets-XXXXXX)"
 node --input-type=module - "${BUILD_WORKTREE}" "${ASSET_REPORT}" "${SOURCE_COMMIT}" <<'NODE'
 import fs from 'node:fs';
 import path from 'node:path';
@@ -322,7 +349,10 @@ info "Ejecutando ./gradlew assembleRelease"
 (cd "${BUILD_WORKTREE}/android" && ./gradlew assembleRelease \
   "-PclicPosAllowReleaseCleartext=${LAN_HTTP_ENABLED}")
 
-APK_SRC="${BUILD_WORKTREE}/android/app/build/outputs/apk/release/Clic-Pos-${VERSION_NAME}-release.apk"
+APK_BASE_NAME="$(sed -n "s/.*def apkBaseName = '\([^']*\)'.*/\1/p" "${BUILD_GRADLE_FILE}" | head -n1)"
+[[ -n "${APK_BASE_NAME}" ]] || APK_BASE_NAME="Alfa-Pos"
+
+APK_SRC="${BUILD_WORKTREE}/android/app/build/outputs/apk/release/${APK_BASE_NAME}-${VERSION_NAME}-release.apk"
 METADATA_SRC="${BUILD_WORKTREE}/android/app/build/outputs/apk/release/output-metadata.json"
 
 require_file "${APK_SRC}"
@@ -332,12 +362,16 @@ info "Verificando política HTTP LAN del manifiesto"
 verify_apk_network_policy "${AAPT}" "${APK_SRC}" "${LAN_HTTP_ENABLED}"
 
 info "Verificando firma"
-"${APKSIGNER}" verify --print-certs "${APK_SRC}"
+SIGNER_DN="$("${APKSIGNER}" verify --print-certs "${APK_SRC}" | sed -n 's/^Signer #1 certificate DN: //p' | head -n1)"
+info "Firma: ${SIGNER_DN}"
+EXPECTED_CERT_CN="${ALFA_POS_RELEASE_CERT_CN:-CN=Alfa POS}"
+[[ "${SIGNER_DN}" == *"${EXPECTED_CERT_CN}"* ]] \
+  || fail "El APK no está firmado con el certificado de Alfa POS (${EXPECTED_CERT_CN}): ${SIGNER_DN}"
 
 DEST_DIR="${CANONICAL_BUILD_WORKTREE}/android/app/build/outputs/apk/release"
 mkdir -p "${DEST_DIR}"
 
-APK_DEST="${DEST_DIR}/Clic-Pos-${VERSION_NAME}-release.apk"
+APK_DEST="${DEST_DIR}/${APK_BASE_NAME}-${VERSION_NAME}-release.apk"
 METADATA_DEST="${DEST_DIR}/output-metadata-${VERSION_NAME}.json"
 REPORT_DEST="${DEST_DIR}/release-report-${VERSION_NAME}.txt"
 ASSET_REPORT_DEST="${DEST_DIR}/packaged-assets-${VERSION_NAME}.json"

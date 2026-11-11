@@ -2,7 +2,7 @@
 
 ## Ley no negociable
 
-> Ningún APK de CLIC-POS puede promoverse si empeora los contratos funcionales, la sincronización o los presupuestos operativos comprobados en 1.1.363.
+> Ningún APK de Alfa POS puede promoverse si empeora los contratos funcionales, la sincronización o los presupuestos operativos comprobados en 1.1.363.
 
 Un APK que compila, está firmado o acepta `adb install -r` es solamente un **candidato**. Se considera aprobado cuando supera las puertas `prebuild` y `promote` contra la baseline versionada en [`qa/baselines/apk-1.1.363.json`](../qa/baselines/apk-1.1.363.json).
 

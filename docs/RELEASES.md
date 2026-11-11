@@ -2,6 +2,38 @@
 
 Registro de builds **release firmados** validados. El código fuente de referencia sigue siendo `develop`; esta tabla documenta el artefacto y el contexto de build.
 
+> **Cambio de proyecto.** Las entradas anteriores a **1.1.412** corresponden a
+> **CLIC-POS** y conservan sus rutas y firmas originales. Desde **1.1.412** el
+> proyecto es **Alfa POS** (`com.alfapos.app`), con keystore propio en
+> `APK/keys/alfa-pos-release.keystore`. No reutilices rutas ni claves de CLIC-POS.
+
+---
+
+## 1.1.412 (versionCode 1412) — 2026-11-10
+
+Primer release de **Alfa POS** con identidad propia.
+
+| Campo | Valor |
+|--------|--------|
+| **APK** | `Alfa-Pos-1.1.412-release.apk` |
+| **applicationId** | `com.alfapos.app` (label `Alfa POS`) |
+| **versionCode** | 1412 |
+| **versionName** | 1.1.412 |
+| **Rama de build** | `fix/recepcion-movil-idempotencia` (merge en `develop` `a833623`) |
+| **Checkout de build** | repo principal (`/Users/felixdiaz/Documents/ChatGPT/Alfa-POS`) |
+| **Keystore** | `APK/keys/alfa-pos-release.keystore` (`CN=Alfa POS`) |
+| **SHA-256** | `d9dced899f56abd1e19bee0c78334baf5df5601382dd28d7ac9d0c49391fab06` |
+| **Nota funcional** | Recepción idempotente/atómica + bloqueo de conteo por almacén/ubicación |
+
+### Verificación ejecutada
+
+- `npm run qa:release-gate -- --stage prebuild` — PASSED (117 tests)
+- `npm run build` — OK
+- `npx cap sync android` — OK
+- `./gradlew clean assembleRelease -PclicPosAllowReleaseCleartext=true` — OK
+- `apksigner verify --print-certs` — OK (`CN=Alfa POS`)
+- `aapt dump badging` — package `com.alfapos.app`, label `Alfa POS`
+
 ---
 
 ## 1.0.763 (versionCode 763) — 2026-06-06
