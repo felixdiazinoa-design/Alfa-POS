@@ -312,7 +312,7 @@ const InventoryCount: React.FC<InventoryCountProps> = ({
             await claim.release();
 
             alert(navigator.onLine
-                ? 'Conteo guardado y enviado al master.'
+                ? 'Conteo guardado. Se está enviando al servidor; si falla, queda en la cola.'
                 : 'Conteo guardado en cola de sincronización.');
             onCancel(); // Return to home
         }

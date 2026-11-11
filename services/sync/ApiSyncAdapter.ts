@@ -5486,28 +5486,14 @@ class ApiSyncAdapter {
     }
 
     /**
-     * Push a single inventory count session to Master
+     * Push a single inventory count session por el canal operativo (ERP o Master
+     * local). Antes se enviaba siempre al Master con una ruta que no existía en
+     * el servidor Android.
      */
     async pushInventoryCount(countSession: any): Promise<void> {
         try {
             await this.ensurePushReady();
-            const response = await this.fetchWithRetry(`${this.config.masterUrl}/api/sync/inventory/counts`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-Sync-Token': this.authToken || ''
-                },
-                body: JSON.stringify({ items: [countSession] })
-            });
-
-            if (response.status === 401) {
-                await this.authenticate();
-                return this.pushInventoryCount(countSession);
-            }
-
-            if (!response.ok) {
-                throw new Error(`Push inventory count failed: ${response.statusText}`);
-            }
+            await this.postOperationalPayload('/inventory/counts', { items: [countSession] });
             console.log(`📤 ApiSyncAdapter: Pushed inventory count ${countSession.id}`);
         } catch (error) {
             console.error('❌ ApiSyncAdapter: Error pushing inventory count:', error);
