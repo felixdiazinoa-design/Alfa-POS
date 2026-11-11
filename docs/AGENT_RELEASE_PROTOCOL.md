@@ -31,9 +31,12 @@ Antes de compilar, cada fix debe cumplir una de estas dos condiciones:
 
 | Uso | Ruta |
 |-----|------|
-| Repo principal | `/Users/felixdiaz/.gemini/antigravity/playground/tensor-planetoid/CLIC-POS` |
-| Worktree firmada canónica | `/Users/felixdiaz/.gemini/antigravity/playground/tensor-planetoid/_worktrees/CLIC-POS/CLIC-POS-mobile-sqlite` |
-| Worktree archivada sucia | `/Users/felixdiaz/.gemini/antigravity/playground/tensor-planetoid/_worktrees/CLIC-POS/CLIC-POS-mobile-sqlite-legacy-dirty` |
+| Repo principal | `/Users/felixdiaz/Documents/ChatGPT/Alfa-POS` |
+| Worktree de build (opcional) | `_worktrees/Alfa-POS/Alfa-POS-mobile-sqlite` (solo si existe) |
+| Keystore + contraseña | `APK/keys/alfa-pos-release.keystore` y `APK/keys/alfa-pos-keystore.txt` |
+| Configuración de firma | `android/key.properties` (gitignored) |
+
+> **Alfa POS ≠ CLIC-POS.** No uses rutas, keystore ni scripts de CLIC-POS.
 
 ## Flujo obligatorio
 
@@ -131,8 +134,8 @@ Antes de compilar el APK:
 
 1. Usa `develop` como fuente oficial.
 2. No tomes fixes desde Polaris o worktrees locales si no están formalizados por commit/PR.
-3. Alinea la worktree firmada `/Users/felixdiaz/.gemini/antigravity/playground/tensor-planetoid/_worktrees/CLIC-POS/CLIC-POS-mobile-sqlite` al commit fuente exacto del release.
-4. Si `git status --short` en la worktree firmada no está limpio, detente.
+3. Alinea el checkout de build (`_worktrees/Alfa-POS/Alfa-POS-mobile-sqlite` si existe, o el repo principal) al commit fuente exacto del release.
+4. Si `git status --short` en el checkout de build no está limpio, detente.
 5. Sube `versionCode/versionName`, compila, verifica firma y reporta:
    - versión
    - commit fuente
