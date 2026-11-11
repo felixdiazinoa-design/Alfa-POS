@@ -103,8 +103,6 @@ interface UseOfflineSyncOptions {
 const queueCollection = 'offline_reception_queue';
 const conflictCollection = 'offline_reception_conflicts';
 const scansCollection = 'offline_receptions';
-const countQueueCollection = 'offline_count_queue';
-const countConflictCollection = 'offline_count_conflicts';
 
 const sortByCreatedAt = <T extends { createdAt?: string }>(items: T[]): T[] => (
   [...items].sort((a, b) => {
@@ -139,17 +137,13 @@ export const useOfflineSync = ({ onAfterLocalProcess }: UseOfflineSyncOptions = 
     const queue = (await db.get(queueCollection as any)) as OfflineReceptionQueueItem[] || [];
     const conflictItems = (await db.get(conflictCollection as any)) as OfflineReceptionConflict[] || [];
 
-    // Include counts in global pending count
-    const countQueue = (await db.get(countQueueCollection as any)) as any[] || [];
-    const countConflicts = (await db.get(countConflictCollection as any)) as any[] || [];
-
+    // Los conteos usan la misma cola que las recepciones (`documentType`).
     const pending = queue.filter(item => item.status === 'PENDING' || item.status === 'ERROR' || item.status === 'SYNCING');
-    const pendingCounts = countQueue.filter(item => item.status === 'PENDING' || item.status === 'ERROR' || item.status === 'SYNCING');
 
-    setPendingCount(pending.length + pendingCounts.length);
+    setPendingCount(pending.length);
     setBlockedDocumentKeys(buildBlockedReceptionDocumentKeys(queue));
 
-    const allConflicts = [...conflictItems, ...countConflicts].sort((a, b) => {
+    const allConflicts = [...conflictItems].sort((a, b) => {
       const timeA = new Date(a.createdAt || 0).getTime();
       const timeB = new Date(b.createdAt || 0).getTime();
       return timeB - timeA;
@@ -444,8 +438,10 @@ export const useOfflineSync = ({ onAfterLocalProcess }: UseOfflineSyncOptions = 
       id: `OFFQ-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
       status: 'PENDING',
       forceOverwrite: true,
-      localApplied: false,
-      appliedReceptionId: undefined,
+      // Si el conflicto ocurrió después de aplicar localmente, se conserva el
+      // estado para no volver a sumar stock al sobrescribir.
+      localApplied: Boolean(base.localApplied),
+      appliedReceptionId: base.appliedReceptionId,
       attempts: 0,
       updatedAt: new Date().toISOString(),
       createdAt: new Date().toISOString(),
