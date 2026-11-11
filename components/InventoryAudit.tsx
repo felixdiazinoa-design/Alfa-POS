@@ -100,8 +100,11 @@ const InventoryAudit: React.FC<InventoryAuditProps> = ({ products, warehouseId, 
       const data = await res.json();
       if (data.success) {
         setSession({ id: data.sessionId, startedAt: data.startedAt, status: 'OPEN' });
+      } else if (data.holder) {
+        const holderLabel = data.holder.userName || data.holder.terminalId || 'otro equipo';
+        alert(`El almacén está en conteo por ${holderLabel}.`);
       } else {
-        alert('Error iniciando sesión: ' + data.error);
+        alert('Error iniciando sesión: ' + (data.message || data.error));
       }
     } catch (e) {
       console.error(e);

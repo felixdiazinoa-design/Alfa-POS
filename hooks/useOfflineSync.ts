@@ -2,6 +2,16 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { db } from '../utils/db';
 import { apiSyncAdapter } from '../services/sync/ApiSyncAdapter';
 import { PurchaseOrder, StockTransfer } from '../types';
+import {
+  DuplicateReceptionError,
+  RECEPTION_IDEMPOTENCY_COLLECTION,
+  buildBlockedReceptionDocumentKeys,
+  buildReceptionIdempotencyKey,
+  findQueuedReceptionForDocument,
+  isReceptionIdempotencyFresh,
+  type ReceptionDocumentType,
+  type ReceptionIdempotencyRecord,
+} from '../utils/receptionIdempotency';
 
 export type OfflineReceiptDocumentType = 'PURCHASE_ORDER' | 'TRANSFER_IN' | 'INVENTORY_COUNT';
 
@@ -27,6 +37,8 @@ export interface OfflineReceiptPayload {
   // For INVENTORY_COUNT
   sessionId?: string;
   status?: string;
+  /** Clave de idempotencia del intento; se calcula una vez al finalizar. */
+  idempotencyKey?: string;
 }
 
 export type OfflineCountItem = {
@@ -42,12 +54,17 @@ export interface OfflineCountPayload {
   id: string; // Session ID
   warehouseId: string;
   warehouseName?: string;
+  /** Zona/ubicación contada. Vacío = almacén completo. */
+  locationLabel?: string | null;
+  locationId?: string | null;
   items: OfflineCountItem[];
   startedAt: string;
   finishedAt: string;
   terminalId: string;
   userId: string;
   userName: string;
+  /** Sesión de bloqueo del Master que respaldó este conteo (si existió). */
+  claimSessionId?: string | null;
 }
 
 interface QueueMetadata {
@@ -114,6 +131,7 @@ export const useOfflineSync = ({ onAfterLocalProcess }: UseOfflineSyncOptions = 
   const [isSyncing, setIsSyncing] = useState(false);
   const [pendingCount, setPendingCount] = useState(0);
   const [conflicts, setConflicts] = useState<OfflineReceptionConflict[]>([]);
+  const [blockedDocumentKeys, setBlockedDocumentKeys] = useState<string[]>([]);
   const [syncToast, setSyncToast] = useState<string | null>(null);
   const processingRef = useRef(false);
 
@@ -129,6 +147,7 @@ export const useOfflineSync = ({ onAfterLocalProcess }: UseOfflineSyncOptions = 
     const pendingCounts = countQueue.filter(item => item.status === 'PENDING' || item.status === 'ERROR' || item.status === 'SYNCING');
 
     setPendingCount(pending.length + pendingCounts.length);
+    setBlockedDocumentKeys(buildBlockedReceptionDocumentKeys(queue));
 
     const allConflicts = [...conflictItems, ...countConflicts].sort((a, b) => {
       const timeA = new Date(a.createdAt || 0).getTime();
@@ -308,7 +327,45 @@ export const useOfflineSync = ({ onAfterLocalProcess }: UseOfflineSyncOptions = 
   const enqueueOfflineReceipt = useCallback(async (
     payload: OfflineReceiptPayload,
     metadata: QueueMetadata
-  ) => {
+  ): Promise<{ queued: boolean; alreadyApplied: boolean; receptionId?: string }> => {
+    const documentType = payload.documentType as ReceptionDocumentType;
+    const queue = (await db.get(queueCollection as any)) as OfflineReceptionQueueItem[] || [];
+
+    // 1. Un documento solo puede tener una recepción esperando sincronizar.
+    if (findQueuedReceptionForDocument(queue, documentType, payload.documentId)) {
+      throw new DuplicateReceptionError(
+        `Ya hay una recepción de #${metadata.documentCode} esperando sincronizar. No se puede recibir dos veces el mismo documento.`
+      );
+    }
+
+    const idempotencyKey = payload.idempotencyKey?.trim() || buildReceptionIdempotencyKey({
+      documentType,
+      documentId: payload.documentId,
+      receivedBy: payload.receivedBy,
+      items: payload.items.map(item => ({
+        productId: item.productId,
+        variantSku: item.variantSku,
+        expectedQty: item.expectedQty,
+        receivedQty: item.receivedQty,
+      })),
+    });
+
+    // 2. Si este mismo intento ya se aplicó (replay tras caída), no encolar de nuevo.
+    const previousAttempt = (await db
+      .getDocument(RECEPTION_IDEMPOTENCY_COLLECTION, idempotencyKey)
+      .catch(() => null)) as ReceptionIdempotencyRecord | null;
+
+    if (previousAttempt && isReceptionIdempotencyFresh(previousAttempt.createdAt)) {
+      const previousReception = await db
+        .getDocument('receptions', previousAttempt.receptionId)
+        .catch(() => null);
+
+      if (previousReception) {
+        await refreshState();
+        return { queued: false, alreadyApplied: true, receptionId: previousAttempt.receptionId };
+      }
+    }
+
     const queueItem: OfflineReceptionQueueItem = {
       id: `OFFQ-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
       createdAt: new Date().toISOString(),
@@ -320,11 +377,12 @@ export const useOfflineSync = ({ onAfterLocalProcess }: UseOfflineSyncOptions = 
       documentId: payload.documentId,
       documentCode: metadata.documentCode,
       originName: metadata.originName,
-      payload
+      payload: { ...payload, idempotencyKey }
     };
 
     await db.saveDocument(queueCollection as any, queueItem as any);
     await refreshState();
+    return { queued: true, alreadyApplied: false };
   }, [refreshState]);
 
   const enqueueOfflineCount = useCallback(async (
@@ -429,6 +487,7 @@ export const useOfflineSync = ({ onAfterLocalProcess }: UseOfflineSyncOptions = 
     isSyncing,
     pendingCount,
     conflicts,
+    blockedDocumentKeys,
     syncToast,
     enqueueOfflineReceipt,
     enqueueOfflineCount,

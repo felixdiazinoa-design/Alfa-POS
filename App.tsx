@@ -12796,7 +12796,7 @@ const AppContent: React.FC = () => {
                   ? freshOrders.filter(order => order.status === 'ORDERED' || order.status === 'PARTIAL').length
                   : 0,
                 transfers: Array.isArray(freshTransfers)
-                  ? freshTransfers.filter(transfer => transfer.status === 'IN_TRANSIT').length
+                  ? freshTransfers.filter(transfer => transfer.status === 'IN_TRANSIT' || transfer.status === 'PARTIALLY_RECEIVED').length
                   : 0,
               };
             }}

@@ -4,7 +4,7 @@ import {
   RoleDefinition, ParkedTicket, PurchaseOrder, PurchaseOrderItem, Supplier, Watchlist,
   NCFType, FiscalDocumentCode, FiscalRangeDGII, FiscalAllocation, LocalFiscalBuffer, DocumentSeries,
   Campaign, Coupon, ZReport, XReport, Reception, ProductStock, InventoryTracking, Reservation, InventoryCommitment, PaymentMethodDefinition, CartItem,
-  ProductPrice
+  ProductPrice, InventoryLocation
 } from '../types';
 import {
   MOCK_USERS, RETAIL_PRODUCTS, FOOD_PRODUCTS,
@@ -16,6 +16,14 @@ import { Capacitor } from '@capacitor/core';
 import { permissionService } from '../services/sync/PermissionService';
 import { mergeDocumentSeriesCollection, mergeIncomingDocumentSeriesWithoutRewind } from './documentSeriesIdentity';
 import { reconcilePreparedFiscalCollections } from './fiscalPreparedAuthority';
+import {
+  RECEPTION_IDEMPOTENCY_COLLECTION,
+  buildReceptionIdempotencyKey,
+  isReceptionIdempotencyFresh,
+  type ReceptionIdempotencyRecord,
+} from './receptionIdempotency';
+import { buildInventoryLineKey, computeInventoryBalances } from './inventoryBalance';
+import type { DurableDocumentMutation } from '../services/db/DatabaseAdapter';
 
 const DB_KEY = 'clic_pos_db_v1';
 let initPromise: Promise<any> | null = null;
@@ -65,6 +73,27 @@ const toValidMovementIso = (effectiveDate?: string): string => {
   return parsed.toISOString();
 };
 
+/**
+ * Publica un lote de documentos en una sola transacción cuando el adaptador la
+ * soporta. Si no (o si falla), escribe en el mismo orden para no perder datos.
+ */
+const commitDocumentMutations = async (mutations: DurableDocumentMutation[]): Promise<void> => {
+  if (!mutations.length) return;
+
+  if (typeof dbAdapter.saveDocumentsAtomically === 'function') {
+    try {
+      await dbAdapter.saveDocumentsAtomically(mutations);
+      return;
+    } catch (error) {
+      console.warn('[Recepción] Commit atómico no disponible; guardando secuencialmente.', error);
+    }
+  }
+
+  for (const mutation of mutations) {
+    await dbAdapter.saveDocument(mutation.collectionName, mutation.document);
+  }
+};
+
 type ProcessReceiptDocumentType = 'PURCHASE_ORDER' | 'TRANSFER_IN';
 
 interface ProcessReceiptItem {
@@ -87,6 +116,8 @@ interface ProcessReceiptPayload {
   discrepancyReason?: string;
   items: ProcessReceiptItem[];
   effectiveDate?: string;
+  /** Clave de idempotencia. Si falta se deriva del documento y sus líneas. */
+  idempotencyKey?: string;
 }
 
 // --- SEED DATA ---
@@ -194,9 +225,11 @@ const SEED_DATA = {
   inventorySnapshots: [] as any[],
   inventoryAuditLogs: [] as any[],
   inventoryCounts: [] as any[],
+  locations: [] as InventoryLocation[],
   offline_receptions: [] as any[],
   offline_reception_queue: [] as any[],
   offline_reception_conflicts: [] as any[],
+  receptionIdempotency: [] as any[],
   offline_inventory_counts: [] as any[],
   offline_inventory_count_queue: [] as any[],
   offline_inventory_count_conflicts: [] as any[],
@@ -1239,11 +1272,56 @@ export const db = {
       throw new Error('Se requiere motivo de ajuste para registrar faltantes.');
     }
 
+    const idempotencyKey = payload.idempotencyKey?.trim() || buildReceptionIdempotencyKey({
+      documentType: payload.documentType,
+      documentId: payload.documentId,
+      receivedBy: payload.receivedBy,
+      items: receivedItems.map(item => ({
+        productId: item.productId,
+        variantSku: item.variantSku,
+        expectedQty: item.expectedQty,
+        receivedQty: item.receivedQty,
+      })),
+    });
+
+    const previousAttempt = await dbAdapter
+      .getDocument<ReceptionIdempotencyRecord>(RECEPTION_IDEMPOTENCY_COLLECTION, idempotencyKey)
+      .catch(() => null);
+
+    if (previousAttempt && isReceptionIdempotencyFresh(previousAttempt.createdAt)) {
+      const previousReception = await dbAdapter
+        .getDocument<Reception>('receptions', previousAttempt.receptionId)
+        .catch(() => null);
+
+      if (previousReception) {
+        // Reenvío del mismo intento (replay de cola o doble finalización):
+        // devolver lo ya aplicado sin sumar stock ni reimprimir etiquetas.
+        return {
+          reception: previousReception,
+          autoPrintItems: [],
+          missingItems,
+          overageItems,
+          receivedItemsCount: linesWithReception.length,
+        };
+      }
+    }
+
     const now = toValidMovementIso(payload.effectiveDate);
     const terminalId = payload.terminalId || 'LOCAL';
     const products = await dbAdapter.getCollection<Product>('products') || [];
     const productMap = new Map(products.map(product => [product.id, product]));
-    const itemMap = new Map(receivedItems.map(item => [`${item.productId}::${item.variantSku || 'base'}`, item]));
+    const itemMap = new Map(receivedItems.map(item => [buildInventoryLineKey(item.productId, item.variantSku), item]));
+
+    // El candado de inventario se valida ANTES de cualquier escritura: si el
+    // almacén está cerrado, la recepción no puede consumir el documento.
+    await assertInventoryMovementUnlocked(payload.warehouseId, now);
+
+    if (overageItems.length > 0 && !payload.discrepancyReason?.trim()) {
+      throw new Error('Se requiere motivo de ajuste para registrar exceso de mercancía.');
+    }
+
+    const mutations: DurableDocumentMutation[] = [];
+    const orderedQtyByLine = new Map<string, number>();
 
     if (payload.documentType === 'PURCHASE_ORDER') {
       const orders = await dbAdapter.getCollection<PurchaseOrder>('purchaseOrders') || [];
@@ -1251,15 +1329,19 @@ export const db = {
       if (!order) throw new Error('Orden de compra no encontrada.');
 
       const updatedItems = (order.items || []).map(item => {
-        const key = `${item.productId}::${item.variantSku || 'base'}`;
-        const received = itemMap.get(key)?.receivedQty || 0;
+        const lineKey = buildInventoryLineKey(item.productId, item.variantSku);
+        const ordered = Math.max(0, Number(item.quantityOrdered || 0));
+        orderedQtyByLine.set(lineKey, ordered);
+
+        const received = itemMap.get(lineKey)?.receivedQty || 0;
         if (received <= 0) return item;
 
         const currentReceived = Math.max(0, Number(item.quantityReceived || 0));
-        const ordered = Math.max(0, Number(item.quantityOrdered || 0));
+        // Se registra lo recibido real: el exceso ya exigió motivo arriba, así
+        // que no se recorta en silencio contra lo ordenado.
         return {
           ...item,
-          quantityReceived: Math.min(ordered, currentReceived + received)
+          quantityReceived: currentReceived + received
         };
       });
 
@@ -1268,56 +1350,153 @@ export const db = {
       const status: PurchaseOrder['status'] =
         totalReceived <= 0 ? 'ORDERED' : totalReceived >= totalOrdered ? 'COMPLETED' : 'PARTIAL';
 
-      await dbAdapter.saveDocument('purchaseOrders', {
-        ...order,
-        items: updatedItems,
-        status
-      } as PurchaseOrder);
+      mutations.push({
+        collectionName: 'purchaseOrders',
+        document: { ...order, items: updatedItems, status } as PurchaseOrder,
+      });
     } else {
       const allTransfers = await dbAdapter.getCollection<StockTransfer>('transfers') || [];
       const transfer = (allTransfers || []).find(t => t.id === payload.documentId);
       if (!transfer) throw new Error('Traspaso de origen no encontrado.');
 
-      const transferMap = new Map(receivedItems.map(item => [item.productId, item.receivedQty]));
+      const updatedTransferItems = (transfer.items || []).map(item => {
+        const lineKey = buildInventoryLineKey(item.productId, (item as any).variantSku);
+        orderedQtyByLine.set(lineKey, Math.max(0, Number(item.quantity || 0)));
 
-      const updatedTransferItems = (transfer.items || []).map(item => ({
-        ...item,
-        receivedQuantity: Math.max(0, Number(transferMap.get(item.productId) ?? item.receivedQuantity ?? 0))
-      }));
+        const line = itemMap.get(lineKey);
+        if (!line || line.receivedQty <= 0) return item;
 
-      const hasDiscrepancy = updatedTransferItems.some(item => Number(item.receivedQuantity || 0) !== Number(item.quantity || 0));
+        const alreadyReceived = Math.max(0, Number(item.receivedQuantity || 0));
+        return {
+          ...item,
+          receivedQuantity: alreadyReceived + line.receivedQty
+        };
+      });
 
-      await dbAdapter.saveDocument('transfers', {
-        ...transfer,
-        status: 'COMPLETED',
-        items: updatedTransferItems,
-        receivedAt: now,
-        updatedAt: now,
-        syncStatus: 'PENDING',
-        discrepancyReason: hasDiscrepancy ? payload.discrepancyReason : undefined
-      } as StockTransfer);
+      const fullyReceived = updatedTransferItems.every(item => (
+        Number(item.receivedQuantity || 0) >= Math.max(0, Number(item.quantity || 0))
+      ));
+      const hasDiscrepancy = updatedTransferItems.some(item => (
+        Number(item.receivedQuantity || 0) !== Number(item.quantity || 0)
+      ));
+
+      mutations.push({
+        collectionName: 'transfers',
+        document: {
+          ...transfer,
+          // Un traspaso parcial sigue abierto para la siguiente entrega.
+          status: fullyReceived ? 'COMPLETED' : 'PARTIALLY_RECEIVED',
+          items: updatedTransferItems,
+          receivedAt: fullyReceived ? now : transfer.receivedAt,
+          updatedAt: now,
+          syncStatus: 'PENDING',
+          discrepancyReason: hasDiscrepancy ? payload.discrepancyReason : undefined,
+        } as StockTransfer,
+      });
     }
 
     const movementConcept: LedgerConcept = payload.documentType === 'PURCHASE_ORDER' ? 'COMPRA' : 'TRASPASO_ENTRADA';
-    const movementRef = payload.documentId;
 
-    await db.recordInventoryMovements(linesWithReception.map(item => ({
-      warehouseId: payload.warehouseId,
+    const newEntries: InventoryLedgerEntry[] = linesWithReception.map(item => ({
+      id: `LEG-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
       productId: item.productId,
+      warehouseId: payload.warehouseId,
       concept: movementConcept,
-      documentRef: movementRef,
-      qty: item.receivedQty,
-      movementCost: Number(item.cost || productMap.get(item.productId)?.cost || 0),
+      documentRef: payload.documentId,
+      createdAt: now,
+      qtyIn: item.receivedQty,
+      qtyOut: 0,
+      unitCost: Number(item.cost || productMap.get(item.productId)?.cost || 0),
+      balanceQty: 0,
+      balanceAvgCost: 0,
       terminalId,
       variantId: item.variantSku,
       variantName: item.variantInfo,
-      effectiveDate: now
-    })));
+      syncStatus: 'PENDING'
+    }));
+
+    if (permissionService.isSlaveTerminal()) {
+      // En terminal esclava el saldo lo calcula el master: se conservan los
+      // movimientos tal cual, igual que hace recordInventoryMovements.
+      mutations.push(...newEntries.map(entry => ({ collectionName: 'inventoryLedger', document: entry })));
+    } else {
+      const ledger = await dbAdapter.getCollection<InventoryLedgerEntry>('inventoryLedger') || [];
+      const commitments = await dbAdapter.getCollection<InventoryCommitment>('inventoryCommitments') || [];
+      const storedById = new Map(ledger.map(entry => [entry.id, entry]));
+      const pairs = new Map<string, { productId: string; warehouseId: string; entries: InventoryLedgerEntry[] }>();
+
+      for (const entry of [...ledger, ...newEntries]) {
+        const pairKey = `${entry.productId}|${entry.warehouseId}`;
+        const pair = pairs.get(pairKey) || { productId: entry.productId, warehouseId: entry.warehouseId, entries: [] };
+        pair.entries.push(entry);
+        pairs.set(pairKey, pair);
+      }
+
+      const updatedProducts = new Map<string, Product>();
+
+      for (const pair of pairs.values()) {
+        const {
+          entries: balancedEntries,
+          balanceQty,
+          balanceAvgCost,
+        } = computeInventoryBalances(pair.entries);
+
+        for (const entry of balancedEntries) {
+          const stored = storedById.get(entry.id);
+          if (stored && stored.balanceQty === entry.balanceQty && stored.balanceAvgCost === entry.balanceAvgCost) {
+            continue;
+          }
+          mutations.push({ collectionName: 'inventoryLedger', document: entry });
+        }
+
+        const product = products.find(candidate => candidate.id === pair.productId);
+        if (!product) {
+          console.error(`❌ Product ${pair.productId} NOT FOUND!`);
+          continue;
+        }
+
+        const updatedProduct = updatedProducts.get(product.id) || {
+          ...product,
+          stockBalances: { ...(product.stockBalances || {}) },
+        } as Product;
+
+        updatedProduct.stockBalances![pair.warehouseId] = balanceQty;
+        updatedProduct.stock = Object.values(updatedProduct.stockBalances || {})
+          .reduce((sum, value) => sum + Number(value || 0), 0);
+        updatedProduct.cost = balanceAvgCost;
+        updatedProduct.updatedAt = now;
+        updatedProducts.set(product.id, updatedProduct);
+
+        const commitment = commitments.find(candidate => (
+          candidate.productId === pair.productId && candidate.warehouseId === pair.warehouseId
+        ));
+        const qtyCommitted = Math.max(0, Number(commitment?.qtyCommitted || 0));
+
+        mutations.push({
+          collectionName: 'productStocks',
+          document: {
+            id: `${pair.productId}_${pair.warehouseId}`,
+            productId: pair.productId,
+            warehouseId: pair.warehouseId,
+            quantity: balanceQty,
+            qtyPhysical: balanceQty,
+            qtyCommitted,
+            qtyAvailable: balanceQty - qtyCommitted,
+            updatedAt: now
+          } as ProductStock,
+        });
+      }
+
+      for (const product of updatedProducts.values()) {
+        mutations.push({ collectionName: 'products', document: product });
+      }
+    }
 
     const receptionItems: PurchaseOrderItem[] = linesWithReception.map(item => ({
       productId: item.productId,
       productName: item.productName || productMap.get(item.productId)?.name || item.productId,
-      quantityOrdered: item.expectedQty,
+      // Cantidad realmente pedida/enviada, no el remanente del momento.
+      quantityOrdered: orderedQtyByLine.get(buildInventoryLineKey(item.productId, item.variantSku)) ?? item.expectedQty,
       quantityReceived: item.receivedQty,
       cost: Number(item.cost || productMap.get(item.productId)?.cost || 0),
       variantSku: item.variantSku,
@@ -1325,7 +1504,9 @@ export const db = {
     }));
 
     const reception: Reception = {
-      id: `REC-${Date.now()}`,
+      // Sufijo aleatorio: dos recepciones pueden caer en el mismo milisegundo
+      // y, sin él, la segunda sobrescribía a la primera.
+      id: `REC-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
       purchaseOrderId: payload.documentType === 'PURCHASE_ORDER'
         ? payload.documentId
         : `TRANSFER:${payload.documentId}`,
@@ -1334,11 +1515,31 @@ export const db = {
       receivedByUserName: payload.receivedByUserName,
       items: receptionItems,
       terminalId,
+      idempotencyKey,
       syncStatus: 'PENDING',
       updatedAt: now
     };
 
-    await dbAdapter.saveDocument('receptions', reception);
+    const idempotencyRecord: ReceptionIdempotencyRecord = {
+      id: idempotencyKey,
+      receptionId: reception.id,
+      documentType: payload.documentType,
+      documentId: payload.documentId,
+      receivedBy: payload.receivedBy,
+      terminalId,
+      createdAt: now,
+    };
+
+    mutations.push({ collectionName: 'receptions', document: reception });
+    mutations.push({ collectionName: RECEPTION_IDEMPOTENCY_COLLECTION, document: idempotencyRecord });
+
+    // Documento + movimientos + saldos + recepción + índice se publican en una
+    // sola transacción cuando el adaptador la soporta; si no, en el mismo orden.
+    await commitDocumentMutations(mutations);
+
+    import('../services/sync/BackgroundSyncManager').then(m => {
+      m.backgroundSyncManager.triggerSync().catch(console.error);
+    }).catch(console.error);
 
     const autoPrintItems = linesWithReception
       .filter(item => productMap.get(item.productId)?.operationalFlags?.autoPrintLabel)
@@ -1801,48 +2002,15 @@ export const db = {
       console.warn(`⚠️ Recalculate: No ledger entries found for ${productId} @ ${warehouseId}. Resulting stock will be 0.`);
     }
 
-    // 3. Stable Sort: Chronological + ID as tie-breaker
-    productEntries.sort((a, b) => {
-      const timeA = new Date(a.createdAt).getTime();
-      const timeB = new Date(b.createdAt).getTime();
-      if (timeA !== timeB) return timeA - timeB;
-      return a.id.localeCompare(b.id);
-    });
+    // 3. Orden estable + saldos (cantidad y costo promedio ponderado)
+    const {
+      entries: balancedEntries,
+      balanceQty: currentBalance,
+      balanceAvgCost: currentAvgCost,
+    } = computeInventoryBalances(productEntries);
 
-    // Recalculate balances
-    let currentBalance = 0;
-    let currentAvgCost = 0;
-
-    // OPTIMIZATION: We only update the ledger entries in memory for this product/warehouse.
-    // We DON'T save the whole ledger collection here because it's massive.
-    // Instead, we update the product master directly at the end.
-
-    for (const entry of productEntries) {
-      currentBalance += (entry.qtyIn - entry.qtyOut);
-
-      // Robust Weighted Average Cost (WAC) calculation
-      if (entry.qtyIn > 0) {
-        const prevBalance = currentBalance - entry.qtyIn;
-        const inCost = entry.unitCost;
-
-        if (prevBalance <= 0) {
-          // If previous stock was negative or zero, we restart valuation from this intake
-          // to prevent negative baseline values from corrupting the cost.
-          currentAvgCost = inCost;
-        } else {
-          // Standard WAC formula: (Previous Value + New Intake Value) / New Total Quantity
-          const prevValue = prevBalance * currentAvgCost;
-          const newValue = entry.qtyIn * inCost;
-          currentAvgCost = (prevValue + newValue) / currentBalance;
-        }
-      }
-
-      // PERSIST: Update the entry with calculated balance
-      entry.balanceQty = currentBalance;
-      entry.balanceAvgCost = currentAvgCost;
-
-      // We save each entry individually. Since this is only for ONE product/warehouse,
-      // the number of entries is usually small.
+    // PERSIST: cada entrada del par producto/almacén, con su saldo calculado.
+    for (const entry of balancedEntries) {
       await dbAdapter.saveDocument('inventoryLedger', entry);
     }
 

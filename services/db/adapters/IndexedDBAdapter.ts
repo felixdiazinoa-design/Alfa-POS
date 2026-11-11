@@ -12,7 +12,7 @@ import {
 } from '../../sync/masterNumberRangeContract';
 
 const DB_NAME = 'clic_pos_indexeddb';
-const DB_VERSION = 23; // v23 adds durable automatic catalog edits
+const DB_VERSION = 25; // v25 adds the inventory locations catalog
 const OLD_DB_KEY = 'clic_pos_db_v1';
 const OPEN_TIMEOUT_MS = 15000;
 const CURSOR_IDLE_TIMEOUT_MS = 3000;
@@ -35,7 +35,8 @@ const STORES = [
     'currencyAuditLogs', 'currencyRateSchedules',
     'invoiceReviewFlags', 'invoiceAuditEvents', 'invoiceAdjustments',
     'masterNumberRanges', 'masterNumberSyncReceipts',
-    'recoveryOriginals', 'recoveryState', 'recoveryStage', 'wallet_transactions'
+    'recoveryOriginals', 'recoveryState', 'recoveryStage', 'wallet_transactions',
+    'receptionIdempotency', 'locations'
 ];
 
 export class IndexedDBAdapter implements DatabaseAdapter {
