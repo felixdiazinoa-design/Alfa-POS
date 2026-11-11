@@ -1,7 +1,7 @@
 <?xml version='1.0' encoding='utf-8'?>
 <resources>
-    <string name="app_name">Clic-Pos</string>
-    <string name="title_activity_main">Clic-Pos</string>
-    <string name="package_name">com.clicpos.app</string>
-    <string name="custom_url_scheme">com.clicpos.app</string>
+    <string name="app_name">Alfa POS</string>
+    <string name="title_activity_main">Alfa POS</string>
+    <string name="package_name">com.alfapos.app</string>
+    <string name="custom_url_scheme">com.alfapos.app</string>
 </resources>

@@ -21,6 +21,6 @@ public class ExampleInstrumentedTest {
         // Context of the app under test.
         Context appContext = InstrumentationRegistry.getInstrumentation().getTargetContext();
 
-        assertEquals("com.clicpos.app", appContext.getPackageName());
+        assertEquals("com.alfapos.app", appContext.getPackageName());
     }
 }

@@ -20,12 +20,12 @@ android {
         buildConfig = true
     }
     defaultConfig {
-        applicationId "com.clicpos.app"
+        applicationId "com.alfapos.app"
         buildConfigField "boolean", "POS_DIAGNOSTICS", System.getenv("CLIC_POS_DIAGNOSTICS") == "true" ? "true" : "false"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 1373
-        versionName "1.1.373"
+        versionCode 1412
+        versionName "1.1.412"
         manifestPlaceholders = [
                 usesCleartextTraffic: "true",
                 diagnosticProfileable: System.getenv("CLIC_POS_DIAGNOSTICS") == "true" ? "true" : "false",
@@ -82,7 +82,7 @@ android {
 
 android.applicationVariants.configureEach { variant ->
     variant.outputs.configureEach { output ->
-        def apkBaseName = 'Clic-Pos'
+        def apkBaseName = 'Alfa-Pos'
         def apkVersionName = variant.versionName ?: '1.0'
         def apkBuildType = variant.buildType.name
         output.outputFileName = "${apkBaseName}-${apkVersionName}-${apkBuildType}.apk"
