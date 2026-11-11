@@ -128,6 +128,19 @@ export const isReceptionIdempotencyFresh = (
   return Math.abs(now - created) <= windowMs;
 };
 
+/** Retención del índice: más allá de esto el registro ya no protege nada. */
+export const RECEPTION_IDEMPOTENCY_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
+
+export const isReceptionIdempotencyExpired = (
+  createdAt: unknown,
+  now: number = Date.now(),
+  retentionMs: number = RECEPTION_IDEMPOTENCY_RETENTION_MS,
+): boolean => {
+  const created = Date.parse(normalizeText(createdAt));
+  if (!Number.isFinite(created)) return true;
+  return now - created > retentionMs;
+};
+
 export const receptionDocumentKey = (documentType: unknown, documentId: unknown): string => (
   `${normalizeText(documentType)}:${normalizeText(documentId)}`
 );

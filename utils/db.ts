@@ -19,6 +19,7 @@ import { reconcilePreparedFiscalCollections } from './fiscalPreparedAuthority';
 import {
   RECEPTION_IDEMPOTENCY_COLLECTION,
   buildReceptionIdempotencyKey,
+  isReceptionIdempotencyExpired,
   isReceptionIdempotencyFresh,
   type ReceptionIdempotencyRecord,
 } from './receptionIdempotency';
@@ -91,6 +92,35 @@ const commitDocumentMutations = async (mutations: DurableDocumentMutation[]): Pr
 
   for (const mutation of mutations) {
     await dbAdapter.saveDocument(mutation.collectionName, mutation.document);
+  }
+};
+
+const RECEPTION_IDEMPOTENCY_PRUNE_STORAGE_KEY = 'clic:receptionIdempotency:prunedAt';
+const RECEPTION_IDEMPOTENCY_PRUNE_INTERVAL_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * Poda diaria del índice de idempotencia: los registros viejos ya no protegen
+ * ningún reenvío y no conviene que crezcan sin límite.
+ */
+const pruneReceptionIdempotencyIfDue = async (): Promise<void> => {
+  try {
+    if (typeof localStorage === 'undefined') return;
+
+    const lastRun = Number(localStorage.getItem(RECEPTION_IDEMPOTENCY_PRUNE_STORAGE_KEY) || 0);
+    const now = Date.now();
+    if (Number.isFinite(lastRun) && now - lastRun < RECEPTION_IDEMPOTENCY_PRUNE_INTERVAL_MS) return;
+
+    localStorage.setItem(RECEPTION_IDEMPOTENCY_PRUNE_STORAGE_KEY, String(now));
+
+    const records = await dbAdapter
+      .getCollection<ReceptionIdempotencyRecord>(RECEPTION_IDEMPOTENCY_COLLECTION) || [];
+
+    for (const record of records) {
+      if (!isReceptionIdempotencyExpired(record.createdAt, now)) continue;
+      await dbAdapter.deleteDocument(RECEPTION_IDEMPOTENCY_COLLECTION, record.id);
+    }
+  } catch (error) {
+    console.warn('[Recepción] No se pudo podar el índice de idempotencia:', error);
   }
 };
 
@@ -1536,6 +1566,7 @@ export const db = {
     // Documento + movimientos + saldos + recepción + índice se publican en una
     // sola transacción cuando el adaptador la soporta; si no, en el mismo orden.
     await commitDocumentMutations(mutations);
+    void pruneReceptionIdempotencyIfDue();
 
     import('../services/sync/BackgroundSyncManager').then(m => {
       m.backgroundSyncManager.triggerSync().catch(console.error);
@@ -1961,11 +1992,12 @@ export const db = {
       newEntries.push(newEntry);
     }
 
-    // Recalculate all affected products
+    // Recalculate all affected products con una sola lectura del ledger
+    const ledgerSnapshot = (await dbAdapter.getCollection<InventoryLedgerEntry>('inventoryLedger')) || [];
     const uniqueProductWarehousePairs = Array.from(new Set(movements.map(m => `${m.productId}|${m.warehouseId}`)));
     for (const pair of uniqueProductWarehousePairs) {
       const [productId, warehouseId] = pair.split('|');
-      await db.recalculateProductStock(productId, warehouseId);
+      await db.recalculateProductStock(productId, warehouseId, ledgerSnapshot);
     }
 
     // Trigger background sync
@@ -1976,15 +2008,23 @@ export const db = {
     return newEntries;
   },
 
-  recalculateProductStock: async (productId: string, warehouseId: string) => {
+  /**
+   * Recalcula saldos de un producto/almacén. `preloadedLedger` permite reutilizar
+   * una lectura única cuando se procesan varios productos (lotes de recepción).
+   */
+  recalculateProductStock: async (
+    productId: string,
+    warehouseId: string,
+    preloadedLedger?: InventoryLedgerEntry[],
+  ) => {
     if (permissionService.isSlaveTerminal()) {
       console.log(`ℹ️ Skipping stock recalculation for Product: ${productId} on Slave terminal. Preserving synced value.`);
       return;
     }
     console.log(`🔄 Recalculating stock for Product: ${productId}, Warehouse: ${warehouseId}`);
 
-    // 1. Get all ledger entries
-    const ledger = await dbAdapter.getCollection<InventoryLedgerEntry>('inventoryLedger');
+    // 1. Get all ledger entries (o usa el snapshot del lote)
+    const ledger = preloadedLedger ?? (await dbAdapter.getCollection<InventoryLedgerEntry>('inventoryLedger'));
 
     if (!ledger || !Array.isArray(ledger)) {
       console.error(`❌ Recalculate Error: Could not fetch 'inventoryLedger' collection for product ${productId}. Aborting to prevent data wipe!`);
