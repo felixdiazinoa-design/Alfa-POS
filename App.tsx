@@ -10791,7 +10791,7 @@ const AppContent: React.FC = () => {
       <div className="h-screen w-screen flex flex-col items-center justify-center bg-slate-900 text-white">
         <div className="w-12 h-12 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mb-4"></div>
         <p className="font-bold tracking-widest uppercase text-xs">
-          {restoringHistory ? 'Restaurando Historial desde Maestra...' : 'Cargando CLIC POS OS...'}
+          {restoringHistory ? 'Restaurando Historial desde Maestra...' : 'Cargando Alfa POS OS...'}
         </p>
       </div>
     );
@@ -12986,7 +12986,7 @@ const AppContent: React.FC = () => {
       <div className="h-screen w-screen flex items-center justify-center bg-slate-50 text-slate-900">
         <div className="flex flex-col items-center gap-4">
           <div className="w-12 h-12 border-4 border-slate-900 border-t-transparent rounded-full animate-spin"></div>
-          <p className="font-bold animate-pulse">Cargando CLIC POS...</p>
+          <p className="font-bold animate-pulse">Cargando Alfa POS...</p>
         </div>
       </div>
     );

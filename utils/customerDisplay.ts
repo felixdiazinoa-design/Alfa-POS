@@ -37,7 +37,7 @@ const isAndroidRuntime = () => {
 
 const DEFAULT_DISPLAY_CONFIG: CustomerDisplayConfig = {
   isEnabled: true,
-  welcomeMessage: '¡Bienvenido a CLIC POS!',
+  welcomeMessage: '¡Bienvenido a Alfa POS!',
   showItemImages: true,
   showQrPayment: true,
   layout: 'SPLIT',
