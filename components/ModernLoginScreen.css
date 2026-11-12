@@ -603,3 +603,50 @@
   border: none;
   color: #FFFFFF;
 }
+
+/* Ajustes de la propuesta A sobre pantallas reales (tablet/caja):
+   - el pie de marca apilaba tres columnas sin espacio y se encimaba
+     ("TERMINALVERSIÓN"), así que pasa a rejilla que puede ocupar dos filas;
+   - el nombre del operador desbordaba la tarjeta blanca y se apoyaba en el
+     borde inferior; ahora cabe, puede ocupar dos líneas y respira arriba/abajo. */
+.alfa-brand-meta {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(92px, 1fr));
+  gap: 0.85rem 1.1rem;
+  font-size: 0.62rem;
+  letter-spacing: 0.08em;
+}
+.alfa-brand-meta b {
+  font-size: 0.8rem;
+  overflow-wrap: anywhere;
+  word-break: normal;
+}
+.modern-user-card {
+  padding: 0.9rem 0.5rem 1.15rem;
+  row-gap: 0.55rem;
+}
+.modern-user-name {
+  display: block;
+  width: 100%;
+  padding: 0 0.25rem;
+  font-size: 0.85rem;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+
+/* La rejilla fija de 3 columnas dejaba dos tarjetas de ~110px con el nombre
+   partido ("Administra/dor"). Con auto-fit las tarjetas usan el ancho real
+   disponible y el nombre cabe en una línea; content centrado verticalmente. */
+.modern-user-grid {
+  grid-template-columns: repeat(auto-fit, minmax(104px, 1fr));
+}
+.modern-user-card {
+  justify-content: center;
+  padding: 1rem 0.6rem;
+}
+.modern-user-name {
+  font-size: 0.82rem;
+  overflow-wrap: break-word;
+  word-break: normal;
+  hyphens: manual;
+}
