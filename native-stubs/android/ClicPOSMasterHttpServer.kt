@@ -473,17 +473,59 @@ object ClicPOSMasterHttpServer {
             break
         }
 
-        val boundTerminal = selectedTerminal
+        var boundTerminal = selectedTerminal
         if (boundTerminal == null) {
-            writeResponse(
-                socket,
-                404,
-                JSONObject()
-                    .put("success", false)
-                    .put("message", "La terminal seleccionada no existe en la Maestra.")
-                    .toString()
-            )
-            return
+            // ALFA POS: una terminal del ERP puede no estar todavía en el snapshot
+            // local de la Maestra. Se auto-registra aquí para permitir la
+            // vinculación sin depender de una sincronización previa del catálogo.
+            val allowUnregistered = payload.optBoolean("allow_unregistered", true)
+            if (!allowUnregistered || selectedTerminalId.isBlank()) {
+                writeResponse(
+                    socket,
+                    404,
+                    JSONObject()
+                        .put("success", false)
+                        .put("message", "La terminal seleccionada no existe en la Maestra.")
+                        .toString()
+                )
+                return
+            }
+
+            val terminalConfig = JSONObject()
+                .put("currentDeviceId", deviceId)
+                .put("lastPairingDate", java.time.Instant.now().toString())
+                .put("isPrimaryNode", false)
+                .put("governedByMaster", true)
+                .put("registrationSource", "ERP_SELF_SERVICE")
+                .put("syncConfig", JSONObject().put("mode", "SLAVE").put("isEnabled", true))
+            val synthetic = JSONObject()
+                .put("id", selectedTerminalId)
+                .put(
+                    "name",
+                    firstNonBlank(
+                        payload.optString("terminal_name"),
+                        payload.optString("station_name"),
+                        payload.optString("terminal_code"),
+                        selectedTerminalId
+                    )
+                )
+                .put(
+                    "code",
+                    firstNonBlank(
+                        payload.optString("terminal_code"),
+                        payload.optString("station_number")
+                    )
+                )
+                .put(
+                    "erpTerminalId",
+                    firstNonBlank(payload.optString("erp_terminal_id"), selectedTerminalId)
+                )
+                .put("config", terminalConfig)
+            val terminalsArray = configSnapshot.optJSONArray("terminals")
+                ?: JSONArray().also { configSnapshot.put("terminals", it) }
+            terminalsArray.put(synthetic)
+            persistTerminalBinding(selectedTerminalId, deviceId)
+            boundTerminal = synthetic
         }
 
         configSnapshot = JSONObject(configSnapshot.toString())

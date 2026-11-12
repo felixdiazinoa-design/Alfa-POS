@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import { BusinessConfig, Product, TerminalConfig, User as UserType } from '../types';
 import { applyTerminalConfigSnapshot, extractTerminalConfigSnapshot } from '../utils/terminalConfigSnapshot';
+import { supabase } from '../utils/supabase';
 import { buildMasterUrlCandidates, buildMasterUrlFromHost, normalizeMasterHost } from '../utils/cloudMasterRegistry';
 import {
   bindTerminalFromErp,
@@ -1166,7 +1167,7 @@ export const TerminalSelector: React.FC<TerminalSelectorProps> = ({
           erpTerminalId: terminal.id,
           deviceName,
           bindingMode,
-          forceTransfer: false,
+          forceTransfer,
           tenantId,
           tenantSlug: resolveTenantSlug(),
           tenantEmail: resolveTenantEmail(),
@@ -1180,7 +1181,7 @@ export const TerminalSelector: React.FC<TerminalSelectorProps> = ({
           erpTerminalId: terminal.id,
           deviceName,
           bindingMode,
-          forceTransfer: false,
+          forceTransfer,
           tenantId,
           tenantSlug: resolveTenantSlug(),
           tenantEmail: resolveTenantEmail(),
@@ -1194,11 +1195,15 @@ export const TerminalSelector: React.FC<TerminalSelectorProps> = ({
           });
         }
 
+        const authSession = await supabase.auth.getSession().catch(() => null);
+        const accessToken = authSession?.data?.session?.access_token;
+        const authHeaders = accessToken ? { Authorization: `Bearer ${accessToken}` } : undefined;
         const response = await requestMasterSetup<BindTerminalResponse>(
           `${apiBase}/bind-terminal`,
           {
             method: 'POST',
             body: bindTerminalRequestBody,
+            headers: authHeaders,
             stage: 'BIND_TERMINAL',
           }
         );
@@ -1229,9 +1234,11 @@ export const TerminalSelector: React.FC<TerminalSelectorProps> = ({
         if (!response.ok) {
           const detail = response.text;
           if (response.status === 404) {
+            const detail = (response.text || '').trim();
             throw new Error(
-              'La Caja Maestra no incluye el protocolo de autorización cliente actualizado. '
-              + 'Instala este mismo APK en la Maestra y en la terminal cliente.'
+              detail
+                ? `La Caja Maestra no pudo resolver la vinculación: ${detail} (tenant ${tenantId || 'N/D'}, ERP ${erpBaseUrl || 'N/D'})`
+                : 'La Caja Maestra no incluye el protocolo de autorización cliente actualizado. Instala este mismo APK en la Maestra y en la terminal cliente.'
             );
           }
           throw new Error(detail || `No se pudo vincular la terminal (${response.status}).`);
@@ -2059,14 +2066,12 @@ export const TerminalSelector: React.FC<TerminalSelectorProps> = ({
                   {isRetryingAuthorization
                     ? 'Consultando nuevamente la autorización del dispositivo...'
                     : expectsErpDirect
-                      ? 'La autorización debe completarse desde Cloud Admin. El POS solo comprobará el estado y no puede autorizarse por sí mismo.'
+                      ? 'Puedes reasignar esta terminal a este equipo desde aquí; se liberará el cliente anterior en la Maestra/ERP.'
                       : 'La reasignación solo cambia qué equipo cliente utiliza esta terminal dentro de la red local.'}
                 </p>
               </div>
               <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3.5 text-xs font-semibold leading-relaxed text-amber-900">
-                {expectsErpDirect
-                  ? `Identifique en Cloud Admin el dispositivo solicitante: ${authorizationIssue.generatedDeviceId}. Reintentar solo consulta si la autorización externa ya fue completada.`
-                  : 'Autorizar este equipo liberará el cliente anterior. La acción ya está protegida por el PIN administrador de la Maestra.'}
+                {`Reasignar autoriza este equipo (${authorizationIssue.generatedDeviceId}) y libera el dispositivo anterior. Se registra en la auditoría de la terminal.`}
               </div>
             </div>
 
@@ -2094,9 +2099,10 @@ export const TerminalSelector: React.FC<TerminalSelectorProps> = ({
                   {(isBinding || isRetryingAuthorization) ? <RefreshCw size={16} className="animate-spin" /> : <RefreshCw size={16} />}
                   {(isBinding || isRetryingAuthorization) ? 'Reintentando...' : 'Reintentar conexión'}
                 </button>
-                {!expectsErpDirect && (
+                {(
                   <button
                     onClick={() => {
+                      if (!window.confirm(`¿Reasignar ${pendingTerminal?.name || 'esta terminal'} a este equipo?\n\nSe liberará el dispositivo anterior.`)) return;
                       setIsRetryingAuthorization(true);
                       void bindTerminal(pendingTerminal, true);
                     }}
@@ -2105,8 +2111,8 @@ export const TerminalSelector: React.FC<TerminalSelectorProps> = ({
                   >
                     <Lock size={16} />
                     {(isBinding || isRetryingAuthorization)
-                      ? 'Autorizando...'
-                      : 'Autorizar este equipo y liberar el anterior'}
+                      ? 'Reasignando...'
+                      : 'Reasignar esta terminal a este equipo'}
                   </button>
                 )}
               </div>

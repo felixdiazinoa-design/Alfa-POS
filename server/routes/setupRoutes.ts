@@ -139,7 +139,14 @@ const buildErpHeaders = (req: express.Request, tenantId: string | null, includeJ
     asString(asObject(req.body).pos_device_id) ||
     asString(asObject(req.body).device_id);
 
+  const serviceToken =
+    asString(process.env.ERP_TAKEOVER_SERVICE_TOKEN) ||
+    asString(process.env.ERP_SERVICE_TOKEN) ||
+    asString(process.env.CLOUD_ADMIN_ERP_SERVICE_TOKEN) ||
+    asString(process.env.INTEGRATION_SECRET_KEY);
+
   if (authorization) headers.Authorization = authorization;
+  else if (serviceToken) headers.Authorization = `Bearer ${serviceToken}`;
   if (cookie) headers.Cookie = cookie;
   if (tenantId) headers['X-Tenant-Id'] = tenantId;
   if (deviceId) headers['X-Device-Id'] = deviceId;
@@ -919,7 +926,32 @@ router.post('/bind-terminal', async (req, res) => {
     }
 
     const erpTerminals = Array.isArray(resolvedContext.terminals) ? resolvedContext.terminals : [];
-    const targetTerminal = resolveTargetErpTerminal(erpTerminals, terminalId, erpTerminalIdFromBody);
+    let targetTerminal = resolveTargetErpTerminal(erpTerminals, terminalId, erpTerminalIdFromBody);
+
+    // Fallback: la terminal puede existir pero estar fuera de la lista de pairing
+    // (offline/inactiva/ocupada). Si el cliente envía un UUID concreto, se resuelve por id.
+    if (!targetTerminal && erpTerminalIdFromBody) {
+      const fallbackProfilePayload = await fetchTerminalProfileSafe(
+        req,
+        erpBaseUrl,
+        resolvedErpTenantId,
+        erpTerminalIdFromBody
+      );
+      const fallbackProfile = asObject(fallbackProfilePayload?.profile);
+      const fallbackTerminal = asObject(fallbackProfilePayload?.terminal);
+      const fallbackMetadata = asObject(fallbackProfile.metadata);
+      const fallbackId = asString(fallbackTerminal.id) || asString(fallbackProfile.terminal_id) || erpTerminalIdFromBody;
+      if (fallbackProfilePayload && (Object.keys(fallbackProfile).length > 0 || Object.keys(fallbackTerminal).length > 0)) {
+        targetTerminal = {
+          ...fallbackTerminal,
+          id: fallbackId,
+          name: asString(fallbackTerminal.name) || asString(fallbackProfile.terminal_name) || asString(fallbackProfile.name) || fallbackId,
+          store_id: asString(fallbackTerminal.store_id) || asString(fallbackProfile.store_id) || resolvedStoreId || null,
+          company_id: asString(fallbackTerminal.company_id) || asString(fallbackProfile.company_id) || resolvedCompanyId || null,
+          device_id: asString(fallbackTerminal.device_id) || asString(fallbackProfile.device_id) || asString(fallbackMetadata.bound_device_id) || null,
+        };
+      }
+    }
 
     if (!targetTerminal) {
       return res.status(404).json({

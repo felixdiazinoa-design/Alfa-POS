@@ -1513,18 +1513,50 @@ export const bindTerminalFromErp = async (input: {
 
   let registerPayload: Record<string, any> | null = null;
 
-  const authorizationCheck = await checkTerminalAuthorizationFromErp({
-    erpBaseUrl: input.erpBaseUrl,
-    tenantId: resolvedContext.tenantId,
-    erpTerminalId: targetErpTerminalId,
-    posDeviceId: input.posDeviceId,
-  });
+  let authorizationCheck: Awaited<ReturnType<typeof checkTerminalAuthorizationFromErp>>;
+  try {
+    authorizationCheck = await checkTerminalAuthorizationFromErp({
+      erpBaseUrl: input.erpBaseUrl,
+      tenantId: resolvedContext.tenantId,
+      erpTerminalId: targetErpTerminalId,
+      posDeviceId: input.posDeviceId,
+    });
+  } catch (authorizationError) {
+    // Reasignación explícita del usuario: el chequeo puede devolver
+    // DEVICE_SUPERSEDED porque el equipo anterior sigue autorizado en el ERP.
+    // Continuamos al takeover en lugar de bloquear la operación.
+    if (!input.forceTransfer) throw authorizationError;
+    const authError = authorizationError as SetupDeviceAuthorizationError;
+    console.warn('[POS_ERP_PAIRING]', {
+      ...pairingLogBase,
+      status: 'FORCE_TRANSFER_AUTH_CHECK_FAILED',
+      authResponseCode: authError?.code || null,
+    });
+    authorizationCheck = {
+      authorized: false,
+      payload: (authError?.payload || {}) as Record<string, unknown>,
+    } as Awaited<ReturnType<typeof checkTerminalAuthorizationFromErp>>;
+  }
   const authorizationPayload = authorizationCheck.payload;
   const occupiedByAnotherDevice = Boolean(
     occupiedDeviceId
     && occupiedDeviceId.toUpperCase() !== input.posDeviceId.toUpperCase()
   );
-  if (occupiedByAnotherDevice && !authorizationCheck.authorized) {
+  if (occupiedByAnotherDevice && input.forceTransfer) {
+    await fetchErpJson(input.erpBaseUrl, `/api/settings/terminals/${encodeURIComponent(targetErpTerminalId)}/takeover`, {
+      method: 'POST',
+      headers: {
+        ...(await getSupabaseAuthHeaders()),
+        ...buildDeviceHeaders(input.posDeviceId),
+      },
+      body: {
+        terminal_id: targetErpTerminalId,
+        device_id: input.posDeviceId,
+        ...(input.deviceName ? { device_name: input.deviceName } : {}),
+        source: 'ALFA_POS_SELF_SERVICE',
+      },
+    });
+  } else if (occupiedByAnotherDevice && !authorizationCheck.authorized) {
     console.warn('[POS_ERP_PAIRING]', {
       ...pairingLogBase,
       previousDeviceId: occupiedDeviceId,
