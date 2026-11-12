@@ -159,6 +159,9 @@ Su canal es **ALFA-Admin** (`https://alfa-admin-nine.vercel.app/api/pos-apk/late
   grep -o "alfa-admin-nine.vercel.app" dist/assets/*.js | sort -u
   ```
 
+Publicar la release en ALFA-Admin (binario + fila en `landlord.pos_apk_releases`):
+[APK_UPDATE_CHANNEL_PUBLISH.md](./APK_UPDATE_CHANNEL_PUBLISH.md).
+
 10. **Validar en dispositivo físico**:
    - Login vertical y horizontal
    - Activación de terminal
