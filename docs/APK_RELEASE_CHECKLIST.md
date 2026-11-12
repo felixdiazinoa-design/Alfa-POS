@@ -140,6 +140,25 @@ Variables útiles:
 - `ALFA_POS_RELEASE_LAN_HTTP_ENABLED` — `true`/`false` para cleartext LAN (por defecto `true`).
 - `ALFA_POS_RELEASE_CERT_CN` — CN esperado del certificado (por defecto `CN=Alfa POS`).
 
+### Canal de actualización APK (obligatorio)
+
+El aviso «Nueva versión disponible» lo resuelve `services/version/posApkUpdateService.ts`.
+Su canal es **ALFA-Admin** (`https://alfa-admin-nine.vercel.app/api/pos-apk/latest`).
+
+- El feed debe publicar el binario de Alfa POS (`com.alfapos.app`) con su `version_code`
+  (`Alfa-Pos-<versión>-release.apk`). Publicar el APK sin actualizar el registro del feed
+  deja a los equipos sin aviso de actualización.
+- **Nunca** apuntar al Cloud-Admin de CLIC-Suite (`cloud-admin.clicsuite.com`,
+  `cloud-admin-gamma.vercel.app`): ese feed publica la APK de CLIC POS (`com.clicpos.app`).
+  El servicio remapea esos hosts al canal de Alfa y descarta releases cuyo `package_name`
+  declarado no sea `com.alfapos.app` (`reason: FOREIGN_RELEASE`).
+- Verificación previa al promote:
+
+  ```bash
+  npx tsx --test tests/posApkUpdateContract.test.ts
+  grep -o "alfa-admin-nine.vercel.app" dist/assets/*.js | sort -u
+  ```
+
 10. **Validar en dispositivo físico**:
    - Login vertical y horizontal
    - Activación de terminal

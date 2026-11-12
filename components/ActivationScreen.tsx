@@ -120,7 +120,7 @@ const looksLikeFetchFailure = (error: unknown): boolean => {
 const normalizeActivationErrorMessage = (error: unknown): string => {
     const message = getErrorMessage(error);
     if (looksLikeFetchFailure(error)) {
-        return 'No se pudo conectar con Clic Cloud. Verifique su internet e intente nuevamente.';
+        return 'No se pudo conectar con el Cloud Admin de Alfa. Verifique su internet e intente nuevamente.';
     }
 
     return message;
@@ -292,11 +292,11 @@ const ActivationScreen: React.FC<ActivationScreenProps> = ({ onActivationComplet
         };
 
         if (!response.ok) {
-            throw new Error(payload.msg || payload.error_description || payload.error || 'No se pudo iniciar sesión en Clic Cloud.');
+            throw new Error(payload.msg || payload.error_description || payload.error || 'No se pudo iniciar sesión en el Cloud Admin de Alfa.');
         }
 
         if (!payload.access_token || !payload.refresh_token) {
-            throw new Error('Respuesta inválida de autenticación de Clic Cloud.');
+            throw new Error('Respuesta inválida de autenticación del Cloud Admin de Alfa.');
         }
 
         const { data: sessionData, error: sessionError } = await supabase.auth.setSession({
@@ -522,7 +522,7 @@ const ActivationScreen: React.FC<ActivationScreenProps> = ({ onActivationComplet
                         <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
                             <div className="text-center mb-8">
                                 <h1 className="text-3xl font-black text-white mb-2">Activación</h1>
-                                <p className="text-slate-400 text-sm">Ingrese las credenciales enviadas por Clic-Cloud para vincular su sistema.</p>
+                                <p className="text-slate-400 text-sm">Ingrese las credenciales enviadas por el Cloud Admin de Alfa para vincular su sistema.</p>
                             </div>
 
                             <form onSubmit={handleInitialLogin} className="space-y-5">
@@ -675,14 +675,14 @@ const ActivationScreen: React.FC<ActivationScreenProps> = ({ onActivationComplet
 
                 <div className="mt-8 text-center space-y-4">
                     <a
-                        href={(import.meta as any).env.VITE_CLOUD_ADMIN_URL || 'https://cloud-admin-gamma.vercel.app/'}
+                        href={(import.meta as any).env.VITE_CLOUD_ADMIN_URL || 'https://alfa-admin-nine.vercel.app/'}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="text-blue-400/60 hover:text-blue-400 text-[11px] font-medium transition-colors border-b border-transparent hover:border-blue-400/30 pb-0.5 inline-block"
                     >
                         ¿Prefiere hacerlo desde Cloud Admin? Abrir panel web
                     </a>
-                    <p className="text-slate-600 text-[10px] uppercase font-bold tracking-[0.2em] pt-2">CLIC POS • CLOUD EDITION</p>
+                    <p className="text-slate-600 text-[10px] uppercase font-bold tracking-[0.2em] pt-2">ALFA POS • CLOUD EDITION</p>
                 </div>
             </div>
 
