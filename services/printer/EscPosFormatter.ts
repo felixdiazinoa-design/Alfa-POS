@@ -361,7 +361,7 @@ export const buildEscPosHardwareTestPayload = (data: EscPosHardwareTestData): st
   chunks.push(align(1));
   chunks.push(bold(true));
   chunks.push(size(0x11));
-  pushTextLines(chunks, splitLines('CLIC POS', width));
+  pushTextLines(chunks, splitLines('ALFA POS', width));
   chunks.push(size(0x00));
   pushTextLines(chunks, splitLines('PRUEBA DE IMPRESORA', width));
   chunks.push(bold(false));
@@ -420,7 +420,7 @@ const buildReceiptHeader = (chunks: Uint8Array[], config: BusinessConfig, title:
   chunks.push(align(1));
   chunks.push(bold(true));
   chunks.push(size(0x11));
-  chunks.push(text(companyInfo.name || 'CLIC POS'));
+  chunks.push(text(companyInfo.name || 'ALFA POS'));
   chunks.push(size(0x00));
   chunks.push(bold(false));
 
@@ -949,7 +949,7 @@ export const buildEscPosZReportPayload = (
   chunks.push(initPrinter());
   chunks.push(align(1));
   chunks.push(bold(true));
-  pushTextLines(chunks, splitLines(config?.companyInfo?.name || 'CLIC POS', width));
+  pushTextLines(chunks, splitLines(config?.companyInfo?.name || 'ALFA POS', width));
   chunks.push(size(0x11));
   pushTextLines(chunks, splitLines(reportTitle, width));
   chunks.push(size(0x00));

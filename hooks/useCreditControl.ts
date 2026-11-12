@@ -8,7 +8,7 @@ export interface DelinquentInvoice extends Transaction {
 
 /**
  * Hook to manage credit control and delinquency detection.
- * Clic POS Policy: Delinquent if any invoice is > 15 days past due.
+ * Alfa POS Policy: Delinquent if any invoice is > 15 days past due.
  */
 export const useCreditControl = (customer: Customer | null, transactions: Transaction[]) => {
     const delinquencyInfo = useMemo(() => {

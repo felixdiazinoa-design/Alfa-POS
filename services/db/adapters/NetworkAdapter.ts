@@ -92,7 +92,7 @@ export class NetworkAdapter implements DatabaseAdapter {
                 headers: { 'Connection': 'keep-alive' }
             }); // Use a known endpoint
             if (!res.ok && res.status !== 404) throw new Error('Server not reachable');
-            console.log("✅ Connected to CLIC-POS Backend.");
+            console.log("✅ Connected to Alfa POS Backend.");
         } catch (error) {
             console.error("❌ Failed to connect to backend:", error);
             // We might want to throw here or fallback to offline mode in future

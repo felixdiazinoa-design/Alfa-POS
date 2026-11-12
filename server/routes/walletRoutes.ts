@@ -81,7 +81,7 @@ router.post('/send-welcome-email', async (req, res) => {
         const appleConfig = {
             teamIdentifier: walletConfig.apple.teamId || 'MOCK_TEAM',
             passTypeIdentifier: walletConfig.apple.passTypeIdentifier || 'pass.com.clicpos.loyalty',
-            organizationName: 'CLIC POS',
+            organizationName: 'Alfa POS',
             description: 'Loyalty Card',
             logoText: 'CLIC',
             foregroundColor: 'rgb(255, 255, 255)',

@@ -35,7 +35,7 @@ const SCALE_PRESETS = [
 
 const DEFAULT_DISPLAY_CONFIG: CustomerDisplayConfig = {
    isEnabled: true,
-   welcomeMessage: '¡Bienvenido a CLIC POS!',
+   welcomeMessage: '¡Bienvenido a Alfa POS!',
    showItemImages: true,
    showQrPayment: true,
    layout: 'SPLIT',
@@ -216,7 +216,7 @@ const HardwareSettings: React.FC<HardwareSettingsProps> = ({ config: globalConfi
       setFpTestFeedback(null);
       try {
          if (!nativePrintBridge.supportsFingerprintDiscovery()) {
-            setFpNotice('La detección automática de lectores requiere la app Android CLIC POS con el bridge nativo actualizado.');
+            setFpNotice('La detección automática de lectores requiere la app Android Alfa POS con el bridge nativo actualizado.');
             setFpDiscovered([]);
             return;
          }
@@ -814,7 +814,7 @@ const HardwareSettings: React.FC<HardwareSettingsProps> = ({ config: globalConfi
          </style>
       </head>
       <body>
-         <h1>CLIC POS</h1>
+         <h1>ALFA POS</h1>
          <div class="center">Ticket de prueba de impresora</div>
          <div class="divider"></div>
          <div class="row"><span>Impresora</span><strong>${printer.name || 'Sin nombre'}</strong></div>

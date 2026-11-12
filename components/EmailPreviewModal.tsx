@@ -15,7 +15,7 @@ const EMAIL_HTML_TEMPLATE = `<!DOCTYPE html>
     <meta name="viewport" content="width=device-width">
     <meta http-equiv="X-UA-Compatible" content="IE=edge">
     <meta name="x-apple-disable-message-reformatting">
-    <title>¡Bienvenido al Club Clic-POS!</title>
+    <title>¡Bienvenido a tu Wallet Digital de Alfa POS!</title>
     
     <style>
         /* RESET STYLES */
@@ -155,7 +155,7 @@ const EMAIL_HTML_TEMPLATE = `<!DOCTYPE html>
             <tr>
                 <td style="padding: 40px 0; text-align: center;">
                     <p style="margin: 0 0 10px; font-family: sans-serif; font-size: 12px; color: #9ca3af;">
-                        © 2024 Clic-POS Retail. Todos los derechos reservados.
+                        © 2024 Alfa POS. Todos los derechos reservados.
                     </p>
                     <p style="margin: 0; font-family: sans-serif; font-size: 12px; color: #9ca3af;">
                         <a href="#" style="color: #6b7280; text-decoration: underline;">Términos y Condiciones</a>

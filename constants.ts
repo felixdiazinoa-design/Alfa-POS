@@ -126,7 +126,7 @@ export const DEFAULT_TERMINAL_CONFIG = {
     printerAssignments: {},
     customerDisplay: {
       isEnabled: true,
-      welcomeMessage: '¡Bienvenidos a CLIC POS!',
+      welcomeMessage: '¡Bienvenidos a Alfa POS!',
       showItemImages: true,
       showQrPayment: true,
       layout: 'SPLIT' as const,
@@ -593,7 +593,7 @@ export const getInitialConfig = (subVertical: SubVertical): BusinessConfig => {
     themeColor: 'blue',
     features: { stockTracking: true },
     ux: DEFAULT_TERMINAL_CONFIG.ux,
-    companyInfo: { name: 'CLIC POS DEMO', rnc: '131-12345-1', phone: '809-555-POS1', address: 'Av. Principal #1, Santo Domingo' },
+    companyInfo: { name: 'ALFA POS DEMO', rnc: '131-12345-1', phone: '809-555-POS1', address: 'Av. Principal #1, Santo Domingo' },
     currencies: [{ code: 'DOP', name: 'Peso Dominicano', symbol: 'RD$', rate: 1, isEnabled: true, isBase: true }],
     integrations: [],
     paymentMethods: [

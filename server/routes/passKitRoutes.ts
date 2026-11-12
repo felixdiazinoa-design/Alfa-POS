@@ -80,7 +80,7 @@ router.get('/passes/:passTypeIdentifier/:serialNumber', async (req, res) => {
         const appleConfig = {
             teamIdentifier: walletConfig.apple?.teamId || 'MOCK_TEAM_ID',
             passTypeIdentifier: passTypeIdentifier,
-            organizationName: 'CLIC POS',
+            organizationName: 'Alfa POS',
             description: 'Loyalty Card',
             logoText: 'CLIC',
             foregroundColor: 'rgb(255, 255, 255)',

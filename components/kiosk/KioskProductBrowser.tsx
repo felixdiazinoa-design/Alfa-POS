@@ -741,7 +741,7 @@ const KioskProductBrowser: React.FC<KioskProductBrowserProps> = ({
               {kioskLogoSrc ? (
                 <img
                   src={kioskLogoSrc}
-                  alt="Logo CLIC POS"
+                  alt="Logo Alfa POS"
                   className="w-full h-full object-contain"
                   onError={() => setLogoLoadError(true)}
                 />
@@ -751,7 +751,7 @@ const KioskProductBrowser: React.FC<KioskProductBrowserProps> = ({
             </div>
             <div>
               <p className="text-xs uppercase tracking-widest text-slate-400 font-bold">Self Checkout</p>
-              <p className="text-xl font-black text-slate-800">{config.companyInfo?.name || 'CLIC POS'}</p>
+              <p className="text-xl font-black text-slate-800">{config.companyInfo?.name || 'Alfa POS'}</p>
             </div>
           </div>
 

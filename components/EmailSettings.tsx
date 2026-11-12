@@ -13,7 +13,7 @@ const EmailSettings: React.FC<EmailSettingsProps> = ({ onSave, onBack }) => {
    const [config, setConfig] = useState<EmailConfig>({
       provider: 'resend',
       apiKey: '',
-      from: 'CLIC POS <no-reply@clicsuite.com>'
+      from: 'Alfa POS <no-reply@clicsuite.com>'
    });
 
    const [isTesting, setIsTesting] = useState(false);
@@ -159,7 +159,7 @@ const EmailSettings: React.FC<EmailSettingsProps> = ({ onSave, onBack }) => {
                      onChange={(e) => handleChange('from', e.target.value)}
                      disabled={managedByErp}
                      className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl font-mono text-sm outline-none focus:ring-2 focus:ring-blue-500"
-                     placeholder="CLIC POS <no-reply@clicsuite.com>"
+                     placeholder="Alfa POS <no-reply@tudominio.com>"
                   />
                   <p className="text-[10px] text-gray-400 mt-1">Usa un remitente de un dominio verificado en Resend.</p>
                </div>
