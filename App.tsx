@@ -6062,7 +6062,7 @@ const AppContent: React.FC = () => {
           db.init(),
           new Promise<never>((_, reject) => {
             window.setTimeout(() => {
-              reject(new Error('Timeout inicializando base local (IndexedDB). Si persiste, cierra otras pestañas de CLIC POS y reintenta.'));
+              reject(new Error('Timeout inicializando base local (IndexedDB). Si persiste, cierra otras pestañas de ALFA POS y reintenta.'));
             }, 60000);
           })
         ]);
@@ -6367,7 +6367,7 @@ const AppContent: React.FC = () => {
         // We must bail OUT of the loading sequence to let the user pair.
         if (!localPairedTerminal && setupWizardCompleted) {
           console.warn('[ACTIVATION_REDIRECT_REASON]', 'NO_LOCAL_PAIRED_TERMINAL_AFTER_SETUP', { currentView, deviceId, setupWizardCompleted });
-          setIsDataLoaded(true); // Stop "Loading CLIC POS..."
+          setIsDataLoaded(true); // Stop "Loading ALFA POS..."
           setIsSecurityLoaded(true); // Bypass "Loading Security..."
           setCurrentView('TERMINAL_PAIRING');
           return;
