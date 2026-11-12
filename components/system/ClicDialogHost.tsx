@@ -38,7 +38,7 @@ const defaultTitle = (request: ClicDialogRequest, tone: ClicDialogTone): string 
   if (tone === 'success') return 'Operación completada';
   if (tone === 'warning') return 'Atención';
   if (tone === 'danger') return 'No se pudo completar';
-  return 'CLIC POS';
+  return 'Alfa POS';
 };
 
 const ClicDialogHost: React.FC = () => {

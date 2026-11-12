@@ -34,7 +34,7 @@ const N8nSettings: React.FC<N8nSettingsProps> = ({ config, onUpdateConfig, onClo
                 body: JSON.stringify({
                     event: 'TEST_CONNECTION',
                     timestamp: new Date().toISOString(),
-                    message: 'Hello from CLIC POS!'
+                    message: 'Hello from Alfa POS!'
                 })
             });
             if (res.ok) {
@@ -93,7 +93,7 @@ const N8nSettings: React.FC<N8nSettingsProps> = ({ config, onUpdateConfig, onClo
                                     className="w-full p-4 bg-gray-50 border-2 border-gray-200 rounded-xl font-mono text-sm outline-none focus:border-pink-500 focus:bg-white transition-all"
                                 />
                                 <p className="text-xs text-gray-400 mt-2">
-                                    CLIC POS enviará datos en formato JSON a esta URL cuando ocurran los eventos seleccionados.
+                                    Alfa POS enviará datos en formato JSON a esta URL cuando ocurran los eventos seleccionados.
                                 </p>
                             </div>
 

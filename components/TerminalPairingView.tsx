@@ -547,7 +547,7 @@ export const TerminalPairingView: React.FC<TerminalPairingViewProps> = ({
             </div>
 
             <p className="mt-8 text-xs text-slate-400 font-medium">
-                CLIC POS v2.5 &bull; Powered by Antigravity
+                Alfa POS v2.5 &bull; Powered by Antigravity
             </p>
         </div>
     );

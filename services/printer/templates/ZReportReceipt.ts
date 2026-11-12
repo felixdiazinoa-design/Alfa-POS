@@ -84,7 +84,7 @@ export const generateZReportReceipt = (
       
       <!-- HEADER -->
       <div class="center">
-        <div class="bold" style="font-size: 16px;">CLIC POS</div>
+        <div class="bold" style="font-size: 16px;">ALFA POS</div>
         <div>Sucursal Principal</div>
         <div>RNC: 123456789</div>
         <div>Tel: 809-555-0123</div>
@@ -297,7 +297,7 @@ export const generateZReportReceipt = (
       ${isXReport ? '<div class="center bold" style="font-size: 10px; margin-top: 8px;">ARQUEO PARCIAL - NO LIMPIA VENTAS</div>' : ''}
       <br/>
       <div class="center" style="font-size: 10px;">
-        Generado por CLIC POS<br/>
+        Generado por ALFA POS<br/>
         ${new Date().toLocaleString()}
       </div>
 

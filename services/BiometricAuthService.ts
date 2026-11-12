@@ -108,7 +108,7 @@ export const biometricService = {
             const publicKeyCredentialCreationOptions: PublicKeyCredentialCreationOptions = {
                 challenge,
                 rp: {
-                    name: "CLIC POS",
+                    name: "Alfa POS",
                     id: window.location.hostname, // Important: must match current domain
                 },
                 user: {

@@ -1669,7 +1669,9 @@ const isSeedSetupBusinessConfig = (config: BusinessConfig | null | undefined): b
     .toUpperCase();
 
   return (
-    (normalizedCompanyName === 'CLIC POS DEMO' || normalizedCompanyName === 'EMPRESA DEMO') &&
+    (normalizedCompanyName === 'ALFA POS DEMO'
+      || normalizedCompanyName === 'CLIC POS DEMO'
+      || normalizedCompanyName === 'EMPRESA DEMO') &&
     (!config.companyInfo.rnc || config.companyInfo.rnc === '131-12345-1') &&
     (!config.companyInfo.phone || config.companyInfo.phone === '809-555-POS1') &&
     (!config.companyInfo.address || config.companyInfo.address === 'Av. Principal #1, Santo Domingo')

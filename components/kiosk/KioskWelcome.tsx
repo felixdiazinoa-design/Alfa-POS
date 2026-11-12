@@ -16,14 +16,14 @@ interface KioskWelcomeProps {
 
 const KioskWelcome: React.FC<KioskWelcomeProps> = ({
     onStartShopping,
-    storeName = 'CLIC POS',
+    storeName = 'Alfa POS',
     onAdminAccess
 }) => {
     const normalizedStoreName = storeName
         .replace(/\bDEMO(S)?\b/gi, '')
         .replace(/\s+/g, ' ')
         .trim()
-        .replace(/^CLIC POS$/i, 'CLIC-POS') || 'CLIC-POS';
+        .replace(/^Alfa POS$/i, 'Alfa-POS') || 'Alfa-POS';
 
     return (
         <div

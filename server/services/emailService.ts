@@ -8,7 +8,7 @@ import { getZReportPaymentMethodSummary, paymentMethodSummaryTotal } from '../..
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const DEFAULT_RECEIPT_FROM = 'CLIC POS <no-reply@clicsuite.com>';
+const DEFAULT_RECEIPT_FROM = 'Alfa POS <no-reply@clicsuite.com>';
 
 export type EmailDeliveryResult = {
     id: string;
@@ -59,7 +59,7 @@ export class EmailService {
         const { data, error } = await this.resend.emails.send({
             from: this.config.from,
             to: [to], // Resend expects an array
-            subject: 'Test de Conexión Resend - CLIC POS',
+            subject: 'Test de Conexión Resend - Alfa POS',
             html: '<b>Si estás leyendo esto, la configuración de Resend funciona correctamente.</b>'
         });
 
@@ -97,7 +97,7 @@ export class EmailService {
             const { data, error } = await this.resend.emails.send({
                 from: this.config.from,
                 to: [customer.email],
-                subject: '¡Bienvenido a tu Wallet Digital de CLIC POS!',
+                subject: '¡Bienvenido a tu Wallet Digital de Alfa POS!',
                 html: html,
                 attachments: [
                     {
@@ -141,7 +141,7 @@ export class EmailService {
         const formatMoney = (amount: number) => new Intl.NumberFormat('es-DO', { style: 'currency', currency }).format(amount);
 
         // 3. Replace Placeholders
-        html = html.replace(/{{companyName}}/g, reportData.companyName || 'CLIC POS');
+        html = html.replace(/{{companyName}}/g, reportData.companyName || 'ALFA POS');
         html = html.replace(/{{sequenceNumber}}/g, reportData.sequenceNumber);
         html = html.replace(/{{userName}}/g, reportData.closedByUserName);
         html = html.replace(/{{date}}/g, new Date(reportData.closedAt).toLocaleDateString());
@@ -314,7 +314,7 @@ export class EmailService {
         const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(qrJson)}`;
 
         // 4. Replace Placeholders
-        html = html.replace(/{{companyName}}/g, companyInfo?.name || 'CLIC POS');
+        html = html.replace(/{{companyName}}/g, companyInfo?.name || 'ALFA POS');
         html = html.replace(/{{companyAddress}}/g, companyInfo?.address || '');
         html = html.replace(/{{companyRnc}}/g, companyInfo?.rnc || '');
         html = html.replace(/{{companyPhone}}/g, companyInfo?.phone || '');
@@ -376,7 +376,7 @@ export class EmailService {
             const { data, error } = await this.resend.emails.send({
                 from,
                 to: [to],
-                subject: `Ticket de Compra #${transactionId} - ${companyInfo?.name || 'CLIC POS'}`,
+                subject: `Ticket de Compra #${transactionId} - ${companyInfo?.name || 'ALFA POS'}`,
                 html: html
             });
 

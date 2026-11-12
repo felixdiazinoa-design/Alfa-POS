@@ -85,7 +85,7 @@ NOTAS DEL CIERRE
 ${notes || 'Sin notas adicionales.'}
 
 ================================
-Generado automáticamente por CLIC-POS
+Generado automáticamente por Alfa POS
     `.trim();
 
     const mailtoLink = `mailto:${recipient}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;

@@ -44,7 +44,7 @@ const CustomerVisor: React.FC = () => {
         return (
             <div className="h-screen w-screen flex flex-col items-center justify-center bg-slate-900 text-white">
                 <Monitor className="w-16 h-16 text-blue-500 mb-6 animate-pulse" />
-                <h1 className="text-3xl font-bold tracking-tight mb-2">CLIC POS Visor</h1>
+                <h1 className="text-3xl font-bold tracking-tight mb-2">Alfa POS Visor</h1>
                 <p className="text-slate-400">Esperando sincronización con la terminal principal...</p>
             </div>
         );
@@ -103,7 +103,7 @@ const CustomerVisor: React.FC = () => {
                 <div className="p-6 bg-slate-200/50 flex items-center justify-between border-t border-slate-300">
                     <div className="flex items-center gap-3">
                         <div className="w-10 h-10 bg-blue-600 rounded-lg flex items-center justify-center text-white font-bold">CP</div>
-                        <span className="font-bold text-slate-800 tracking-tight">CLIC POS OS</span>
+                        <span className="font-bold text-slate-800 tracking-tight">Alfa POS OS</span>
                     </div>
                     <div className="text-slate-500 text-sm font-medium italic">
                         {welcomeMessage || "Calidad y eficiencia en cada venta."}
