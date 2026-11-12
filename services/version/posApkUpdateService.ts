@@ -17,6 +17,7 @@ export type PosApkRelease = {
   checksum_sha256?: string | null;
   changelog?: string | null;
   published_at?: string | null;
+  package_name?: string | null;
 };
 
 export type PosApkUpdateAvailable = {
@@ -33,7 +34,12 @@ export type PosApkUpdateResult =
       local: PosApkLocalVersion;
       release?: PosApkRelease | null;
       endpointUrl: string;
-      reason: 'NO_RELEASE' | 'INVALID_REMOTE_VERSION' | 'LOCAL_VERSION_UNKNOWN' | 'NOT_NEWER';
+      reason:
+        | 'NO_RELEASE'
+        | 'INVALID_REMOTE_VERSION'
+        | 'LOCAL_VERSION_UNKNOWN'
+        | 'NOT_NEWER'
+        | 'FOREIGN_RELEASE';
     };
 
 type LatestReleaseResponse = {
@@ -49,10 +55,14 @@ type CheckOptions = {
   force?: boolean;
 };
 
-const CANONICAL_CLOUD_ADMIN_BASE_URL = 'https://cloud-admin.clicsuite.com';
-const LEGACY_CLOUD_ADMIN_BASE_URL = 'https://cloud-admin-gamma.vercel.app';
-const DEFAULT_POS_APK_LATEST_URL = `${CANONICAL_CLOUD_ADMIN_BASE_URL}/api/pos-apk/latest`;
-const DEFAULT_POS_APK_PORTAL_URL = `${CANONICAL_CLOUD_ADMIN_BASE_URL}/apk-pos`;
+// Canal APK de Alfa POS: ALFA-Admin (proyecto independiente de CLIC-Suite).
+// Nunca se debe consultar el feed de Cloud-Admin de CLIC-Suite: publica la APK de
+// CLIC POS (com.clicpos.app) y el POS de Alfa terminaría ofreciendo otro binario.
+const ALFA_CLOUD_ADMIN_BASE_URL = 'https://alfa-admin-nine.vercel.app';
+const LEGACY_CLIC_CLOUD_ADMIN_HOSTS = ['cloud-admin.clicsuite.com', 'cloud-admin-gamma.vercel.app'];
+const DEFAULT_POS_APK_LATEST_URL = `${ALFA_CLOUD_ADMIN_BASE_URL}/api/pos-apk/latest`;
+const DEFAULT_POS_APK_PORTAL_URL = `${ALFA_CLOUD_ADMIN_BASE_URL}/apk-pos`;
+export const ALFA_POS_ANDROID_PACKAGE = 'com.alfapos.app';
 const POS_APK_LATEST_URL_STORAGE_KEY = 'clic_pos_apk_latest_url';
 const POS_APK_PORTAL_URL_STORAGE_KEY = 'clic_pos_apk_portal_url';
 const POS_APK_LOCAL_VERSION_CODE_OVERRIDE_KEY = 'clic_pos_apk_local_version_code_override';
@@ -67,6 +77,28 @@ const normalizeString = (value: unknown): string => (
 const toFinitePositiveNumber = (value: unknown): number | null => {
   const parsed = Number(value);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+};
+
+const readUrlHost = (value: unknown): string => {
+  const normalized = normalizeString(value);
+  if (!normalized) return '';
+  try {
+    return new URL(normalized).hostname.toLowerCase();
+  } catch {
+    try {
+      return new URL(`https://${normalized.replace(/^\/\//, '')}`).hostname.toLowerCase();
+    } catch {
+      return '';
+    }
+  }
+};
+
+export const isClicSuiteAdminUrl = (value: unknown): boolean => {
+  const host = readUrlHost(value);
+  if (!host) return false;
+  return LEGACY_CLIC_CLOUD_ADMIN_HOSTS.some(
+    (legacyHost) => host === legacyHost || host.endsWith(`.${legacyHost}`),
+  );
 };
 
 const parseBridgeResult = (raw: unknown): Record<string, unknown> | null => {
@@ -95,11 +127,15 @@ const getLocalStorageValue = (key: string): string => {
 const normalizeCloudAdminUrl = (value: unknown): string => {
   const normalized = normalizeString(value).replace(/\/$/, '');
   if (!normalized) return '';
-  if (normalized === LEGACY_CLOUD_ADMIN_BASE_URL) return CANONICAL_CLOUD_ADMIN_BASE_URL;
-  if (normalized.startsWith(`${LEGACY_CLOUD_ADMIN_BASE_URL}/`)) {
-    return `${CANONICAL_CLOUD_ADMIN_BASE_URL}${normalized.slice(LEGACY_CLOUD_ADMIN_BASE_URL.length)}`;
+  // Cualquier host heredado de CLIC-Suite se remapea al canal de Alfa POS,
+  // conservando la ruta para no perder endpoints explícitos.
+  if (!isClicSuiteAdminUrl(normalized)) return normalized;
+  try {
+    const parsed = new URL(normalized);
+    return `${ALFA_CLOUD_ADMIN_BASE_URL}${parsed.pathname === '/' ? '' : parsed.pathname}${parsed.search}`;
+  } catch {
+    return ALFA_CLOUD_ADMIN_BASE_URL;
   }
-  return normalized;
 };
 
 const resolveCloudAdminBaseUrl = (config?: BusinessConfig | null): string => {
@@ -108,7 +144,11 @@ const resolveCloudAdminBaseUrl = (config?: BusinessConfig | null): string => {
   return normalizeCloudAdminUrl(
     metadata.cloudAdminBaseUrl
     || metadata.cloud_admin_base_url
+    || metadata.alfaAdminBaseUrl
+    || metadata.alfa_admin_base_url
     || env.VITE_CLOUD_ADMIN_BASE_URL
+    || env.VITE_CLOUD_ADMIN_URL
+    || env.VITE_ALFA_ADMIN_BASE_URL
   );
 };
 
@@ -218,7 +258,26 @@ const normalizeRemoteRelease = (payload: LatestReleaseResponse | null): PosApkRe
     checksum_sha256: normalizeString(release.checksum_sha256) || null,
     changelog: normalizeString(release.changelog) || null,
     published_at: normalizeString(release.published_at) || null,
+    package_name:
+      normalizeString((release as Record<string, unknown>).package_name)
+      || normalizeString((release as Record<string, unknown>).packageName)
+      || normalizeString((release as Record<string, unknown>).application_id)
+      || normalizeString((release as Record<string, unknown>).applicationId)
+      || null,
   };
+};
+
+/**
+ * Un release sólo puede aplicarse si pertenece a Alfa POS. Si Cloud-Admin declara el
+ * package del binario y no es `com.alfapos.app` (p. ej. la APK de CLIC POS), se descarta.
+ * También se descarta cualquier enlace de descarga alojado en Cloud-Admin de CLIC-Suite.
+ */
+export const isPosApkReleaseForAlfaPos = (release: PosApkRelease): boolean => {
+  const declaredPackage = normalizeString(release.package_name).toLowerCase();
+  if (declaredPackage && declaredPackage !== ALFA_POS_ANDROID_PACKAGE) return false;
+  if (isClicSuiteAdminUrl(release.direct_download_url)) return false;
+  if (isClicSuiteAdminUrl(release.apk_url)) return false;
+  return true;
 };
 
 export const isRemotePosApkNewer = (
@@ -238,6 +297,13 @@ export const checkForPosApkUpdate = async (options: CheckOptions = {}): Promise<
   const local = options.localVersion || await readInstalledPosApkVersion();
   const timeoutMs = options.timeoutMs || 3500;
 
+  // Nunca se consulta el feed de CLIC-Suite desde Alfa POS, ni siquiera si viene
+  // forzado por opciones o por localStorage: publica la APK de CLIC POS.
+  if (isClicSuiteAdminUrl(endpointUrl)) {
+    console.warn('[posApkUpdate] Endpoint de CLIC-Suite rechazado en Alfa POS:', endpointUrl);
+    return { hasUpdate: false, local, endpointUrl, release: null, reason: 'FOREIGN_RELEASE' };
+  }
+
   const response = await fetchWithTimeout(endpointUrl, timeoutMs);
   if (!response.ok) {
     throw new Error(`Cloud-Admin APK latest endpoint responded ${response.status}`);
@@ -247,6 +313,15 @@ export const checkForPosApkUpdate = async (options: CheckOptions = {}): Promise<
   const release = normalizeRemoteRelease(payload);
   if (!release) {
     return { hasUpdate: false, local, endpointUrl, release: null, reason: 'NO_RELEASE' };
+  }
+
+  if (!isPosApkReleaseForAlfaPos(release)) {
+    console.warn('[posApkUpdate] Release descartado: no corresponde a Alfa POS', {
+      version: release.version_name,
+      packageName: release.package_name,
+      downloadUrl: release.direct_download_url || release.apk_url,
+    });
+    return { hasUpdate: false, local, endpointUrl, release, reason: 'FOREIGN_RELEASE' };
   }
 
   if (!toFinitePositiveNumber(release.version_code)) {
