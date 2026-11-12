@@ -40,7 +40,7 @@ Constitución antirregresión obligatoria: [docs/APK_RELEASE_CONSTITUTION.md](./
 ## Versión Android
 
 En `android/app/build.gradle`, **`versionCode`** debe subir en cada subida a Play (monotónico).
-Versión actual: **`1412` / `1.1.412`** (`com.alfapos.app`).
+Versión actual: **`1421` / `1.1.421`** (`com.alfapos.app`).
 El `namespace` Java sigue siendo `com.clicpos.app` por compatibilidad con `MainActivity` y los
 plugins nativos; **no** cambies la identidad de la app desde el namespace.
 
