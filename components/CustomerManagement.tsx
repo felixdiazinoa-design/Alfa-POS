@@ -6,11 +6,16 @@ import {
    TrendingUp, TrendingDown, AlertCircle, CreditCard, History, Check,
    MessageCircle, Star, Tag, ChevronRight, ShoppingBag,
    Globe, Calendar, Map, Navigation, CheckSquare, Clock, Landmark, ShieldCheck, Zap, Gift,
-   Loader2, AlertOctagon, Printer, DollarSign, Banknote, QrCode, ArrowRightLeft
+   Loader2, AlertOctagon, Printer, DollarSign, Banknote, QrCode, ArrowRightLeft, BadgeCheck
 } from 'lucide-react';
 import { Customer, BusinessConfig, CustomerTransaction, CustomerAddress, FiscalDocumentCode, Wallet, LoyaltyCard, Transaction, User, Collection, Activity, WalletTransaction, ServiceType } from '../types';
 import { dgiiService, DGIIResponse } from '../services/dgii/DGIIValidationService';
 import { printTicket } from '../utils/printer';
+import { getTierBadgeClass, getTierLabel, isEgoClubEnabled } from '../utils/egoClub';
+import { listLoyaltyOutbox, type LoyaltyOutboxItem } from '../utils/loyaltyOutbox';
+import { flushLoyaltyOutbox, getLoyaltyChannelStatus } from '../services/loyalty/LoyaltyService';
+import EgoClubEnrollModal from './EgoClubEnrollModal';
+import EgoClubCard from './EgoClubCard';
 import AccountReceivableModal from './AccountReceivableModal';
 import CreditAccountDashboard from './CreditAccountDashboard';
 import { agendaService } from '../services/AgendaService';
@@ -86,6 +91,14 @@ const CustomerManagement: React.FC<CustomerManagementProps> = ({
 
    // Filter State
    const [filterTag, setFilterTag] = useState<string>('ALL');
+
+   // EGO Club: alta de socio y estado de la cola de envío al ERP
+   const [isEgoEnrollOpen, setIsEgoEnrollOpen] = useState(false);
+   const [isEgoCardOpen, setIsEgoCardOpen] = useState(false);
+   const [loyaltyQueue, setLoyaltyQueue] = useState<LoyaltyOutboxItem[]>([]);
+   const [isLoyaltyQueueOpen, setIsLoyaltyQueueOpen] = useState(false);
+   // El alta de socio depende del canal de lealtad del ERP (bandera + ruta publicada).
+   const egoEnrollChannel = getLoyaltyChannelStatus('/loyalty/enroll');
 
    // Form State
    const [formData, setFormData] = useState<Partial<Customer>>({});
@@ -363,6 +376,18 @@ const CustomerManagement: React.FC<CustomerManagementProps> = ({
    }, [searchTerm, customers, normalizeCustomerNcfType]);
 
    // --- HANDLERS ---
+
+   const refreshLoyaltyQueue = useCallback(async () => {
+      try {
+         setLoyaltyQueue(await listLoyaltyOutbox());
+      } catch (error) {
+         console.warn('[EGO CLUB] no se pudo leer la cola local:', error);
+      }
+   }, []);
+
+   useEffect(() => {
+      void refreshLoyaltyQueue();
+   }, [refreshLoyaltyQueue]);
 
    const handleCreateClick = () => {
       setSelectedCustomerId(null);
@@ -1041,7 +1066,7 @@ const CustomerManagement: React.FC<CustomerManagementProps> = ({
 
          {/* HEADER */}
          <header className="bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between shrink-0 z-20">
-            <div className="flex items-center gap-4">
+            <div className="flex items-center gap-3">
                <button onClick={handleClose} className="p-2 hover:bg-gray-100 rounded-full text-gray-500 transition-colors">
                   <ArrowLeft size={24} />
                </button>
@@ -1049,23 +1074,76 @@ const CustomerManagement: React.FC<CustomerManagementProps> = ({
                   <Users className={themeText} /> Directorio de Clientes
                </h1>
             </div>
-            <div className="flex gap-2">
+            <div className="flex items-center gap-4">
+               {isEgoClubEnabled(config) && loyaltyQueue.some(item => item.status !== 'SYNCED') && (
+                  <button
+                     onClick={() => setIsLoyaltyQueueOpen(prev => !prev)}
+                     className="px-3 py-2.5 rounded-xl font-bold bg-amber-50 text-amber-700 border border-amber-200 flex items-center gap-2 text-xs"
+                     title="Altas de socio pendientes de enviar al ERP"
+                  >
+                     <Clock size={16} />
+                     {loyaltyQueue.filter(item => item.status === 'PENDING').length} en cola
+                  </button>
+               )}
+               {isEgoClubEnabled(config) && (
+                  <button
+                     onClick={() => setIsEgoEnrollOpen(true)}
+                     disabled={!egoEnrollChannel.enabled}
+                     title={egoEnrollChannel.enabled ? 'Alta de socio EGO Club' : (egoEnrollChannel.reason || 'Alta no disponible en esta caja')}
+                     className="inline-flex h-8 items-center gap-1 rounded-lg border border-[#132124]/70 bg-white px-2.5 text-[11px] font-bold text-[#132124] transition-colors hover:bg-[#F4F7F6] disabled:border-[#DEE7E6] disabled:bg-[#F4F7F6] disabled:text-[#9DAEAD] active:scale-95"
+                  >
+                     <BadgeCheck size={12} /> Alta EGO Club
+                     {!egoEnrollChannel.enabled && (
+                        <span className="text-[9px] font-black uppercase tracking-wide text-gray-500">n/d</span>
+                     )}
+                  </button>
+               )}
                {onSelect && selectedCustomer && (
                   <button
                      onClick={() => onSelect(selectedCustomer)}
-                     className="px-6 py-2.5 rounded-xl font-black bg-emerald-600 text-white shadow-lg animate-in zoom-in"
+                     className="inline-flex h-8 items-center gap-1 rounded-lg bg-[#00A7A0] px-3 text-[11px] font-bold text-white transition-colors hover:bg-[#00877F] active:scale-95"
                   >
                      Asignar al Ticket
                   </button>
                )}
                <button
                   onClick={handleCreateClick}
-                  className={`px-4 py-2.5 rounded-xl font-bold text-white shadow-lg shadow-blue-100 flex items-center gap-2 active:scale-95 transition-all ${themeBg}`}
+                  className="inline-flex h-8 items-center gap-1 rounded-lg px-2.5 text-[11px] font-bold text-[#6C7F80] transition-colors hover:bg-[#EDF2F1] hover:text-[#132124] active:scale-95"
                >
-                  <UserPlus size={18} /> Nuevo Cliente
+                  <UserPlus size={12} /> Nuevo Cliente
                </button>
             </div>
          </header>
+
+         {isLoyaltyQueueOpen && (
+            <div className="px-6 py-3 bg-amber-50 border-b border-amber-200 shrink-0 max-h-48 overflow-y-auto">
+               <div className="flex items-center justify-between mb-1">
+                  <p className="text-[11px] font-black uppercase tracking-wide text-amber-800">
+                     Altas de socio en cola local (se envían al ERP al reconectar)
+                  </p>
+                  <button
+                     onClick={async () => { await flushLoyaltyOutbox(); await refreshLoyaltyQueue(); }}
+                     className="text-[11px] font-black text-amber-800 underline"
+                  >
+                     Reintentar ahora
+                  </button>
+               </div>
+               <ul className="space-y-1">
+                  {loyaltyQueue.map(item => (
+                     <li key={item.id} className="flex items-center justify-between gap-3 text-[11px] font-bold text-gray-700">
+                        <span className="truncate">{item.reference || item.id}</span>
+                        <span className={`px-2 py-0.5 rounded-full uppercase tracking-wide ${
+                           item.status === 'SYNCED' ? 'bg-emerald-100 text-emerald-700'
+                              : item.status === 'FAILED' ? 'bg-red-100 text-red-700'
+                                 : 'bg-amber-200 text-amber-900'
+                        }`}>
+                           {item.status === 'SYNCED' ? 'enviado' : item.status === 'FAILED' ? 'fallido' : 'pendiente'}
+                        </span>
+                     </li>
+                  ))}
+               </ul>
+            </div>
+         )}
 
          {/* MAIN CONTENT SPLIT */}
          <div className="flex-1 overflow-hidden flex">
@@ -1251,12 +1329,14 @@ const CustomerManagement: React.FC<CustomerManagementProps> = ({
                                  <div>
                                     <h2 className="text-2xl font-black text-gray-900 leading-tight">{selectedCustomer.name}</h2>
                                     <div className="flex items-center gap-2 mt-1">
-                                       <span className={`px-2 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wide border ${selectedCustomer.tier === 'GOLD' ? 'bg-amber-100 text-amber-700 border-amber-200' :
-                                          selectedCustomer.tier === 'SILVER' ? 'bg-slate-100 text-slate-700 border-slate-200' :
-                                             'bg-orange-50 text-orange-700 border-orange-200'
-                                          }`}>
-                                          {selectedCustomer.tier || 'BRONZE'} MEMBER
-                                       </span>
+                                       {/* Nivel EGO Club resuelto por el ERP. Si el cliente no tiene
+                                           membresía no se muestra nada: antes se etiquetaba como
+                                           "BRONZE MEMBER", que inventaba un nivel inexistente. */}
+                                       {isEgoClubEnabled(config) && getTierLabel(config, selectedCustomer.tier) && (
+                                          <span className={`px-2 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wide border ${getTierBadgeClass(selectedCustomer.tier)}`}>
+                                             {getTierLabel(config, selectedCustomer.tier)}
+                                          </span>
+                                       )}
                                        {selectedCustomer.tags?.map(tag => (
                                           <span key={tag} className="text-[10px] font-bold text-gray-400">#{tag}</span>
                                        ))}
@@ -1269,70 +1349,75 @@ const CustomerManagement: React.FC<CustomerManagementProps> = ({
                               </div>
 
                               {/* Actions */}
-                              <div className="flex gap-2 w-full md:w-auto">
+                              <div className="flex w-full flex-wrap items-center gap-3 md:w-auto md:flex-nowrap">
+                                 {isEgoClubEnabled(config) && (
+                                    <button
+                                       onClick={() => setIsEgoCardOpen(true)}
+                                       className="inline-flex h-8 flex-1 items-center justify-center gap-1 rounded-lg border border-[#132124]/70 bg-white px-2.5 text-[11px] font-bold text-[#132124] transition-colors hover:bg-[#F4F7F6] md:flex-none"
+                                       title="Tarjeta digital del socio"
+                                    >
+                                       <BadgeCheck size={12} /> <span className="hidden lg:inline">Tarjeta EGO Club</span>
+                                    </button>
+                                 )}
                                  {onSelect && (
                                     <button
                                        onClick={() => onSelect(selectedCustomer)}
-                                       className="flex-1 md:flex-none py-2 px-6 bg-emerald-600 text-white rounded-xl font-black text-sm shadow-lg shadow-emerald-100 hover:bg-emerald-700 transition-all flex items-center justify-center gap-2"
+                                       className="inline-flex h-8 flex-1 items-center justify-center gap-1 rounded-lg bg-[#00A7A0] px-3 text-[11px] font-bold text-white transition-colors hover:bg-[#00877F] md:flex-none"
                                     >
-                                       <Check size={18} /> Asignar al Ticket
+                                       <Check size={12} /> Asignar al Ticket
                                     </button>
                                  )}
-                                 <button onClick={handleWhatsApp} className="flex-1 md:flex-none py-2 px-4 bg-green-50 text-green-600 rounded-xl font-bold text-sm hover:bg-green-100 transition-colors flex items-center justify-center gap-2">
-                                    <MessageCircle size={18} /> <span className="hidden lg:inline">WhatsApp</span>
+                                 <button onClick={handleWhatsApp} title="Escribir por WhatsApp" className="inline-flex h-8 flex-1 items-center justify-center gap-1 rounded-lg border border-[#E1E9E8] bg-white px-2.5 text-[11px] font-bold text-[#4A615F] transition-colors hover:border-[#00A7A0] hover:text-[#00877F] md:flex-none">
+                                    <MessageCircle size={12} /> <span className="hidden lg:inline">WhatsApp</span>
                                  </button>
-                                 <button onClick={handleEditClick} className="p-2 border border-gray-200 rounded-xl hover:bg-gray-50 text-gray-500 transition-colors">
-                                    <Edit2 size={18} />
+                                 <button onClick={handleEditClick} className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-[#E1E9E8] text-[#6C7F80] transition-colors hover:bg-[#F4F7F6]">
+                                    <Edit2 size={13} />
                                  </button>
-                                 <button onClick={() => handleDelete(selectedCustomer.id)} className="p-2 border border-red-100 rounded-xl hover:bg-red-50 text-red-500 transition-colors">
-                                    <Trash2 size={18} />
+                                 <button onClick={() => handleDelete(selectedCustomer.id)} className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-[#F2DCD8] bg-[#FEF6F5] text-[#C0392B] transition-colors hover:bg-[#FDECEA]">
+                                    <Trash2 size={13} />
                                  </button>
                               </div>
                            </div>
 
-                           {/* FISCAL PREVIEW SECTION (Destacada en la ficha) */}
-                           <div className="mt-8 p-4 bg-blue-50/50 rounded-2xl border border-blue-100 grid grid-cols-1 md:grid-cols-2 gap-4">
-                              <div className="flex items-center gap-3">
-                                 <div className="p-2 bg-blue-600 text-white rounded-xl shadow-md">
-                                    <Landmark size={20} />
-                                 </div>
-                                 <div>
-                                    <p className="text-[10px] font-black text-blue-400 uppercase tracking-widest leading-none mb-1">Comprobante Fiscal</p>
-                                    <p className="text-sm font-black text-blue-900">{isFiscalModeDisabled ? 'Sin comprobantes' : (selectedCustomer.defaultNcfType || 'Consumo (B02)')}</p>
-                                 </div>
-                              </div>
-                              <div className="flex items-center gap-3 border-l md:border-l border-blue-100 md:pl-6">
-                                 <div className="p-2 bg-white text-blue-600 rounded-xl border border-blue-200">
-                                    <FileText size={20} />
-                                 </div>
-                                 <div>
-                                    <p className="text-[10px] font-black text-blue-400 uppercase tracking-widest leading-none mb-1">RNC / Cédula</p>
-                                    <p className="text-sm font-mono font-bold text-blue-900">{selectedCustomer.taxId || 'No registrado'}</p>
-                                 </div>
-                              </div>
+                           {/* Datos fiscales como chips compactos: antes ocupaban una
+                               franja completa y competían con las métricas. */}
+                           <div className="mt-5 flex flex-wrap items-center gap-2">
+                              <span
+                                 title="Comprobante fiscal por defecto del cliente"
+                                 className="inline-flex items-center gap-2 rounded-xl border border-[#DCE7E6] bg-[#F4F7F6] px-3 py-1.5 text-[11px] font-black uppercase tracking-wide text-[#1B3034]"
+                              >
+                                 <Landmark size={13} className="text-[#00877F]" />
+                                 {isFiscalModeDisabled ? 'Sin comprobantes' : (selectedCustomer.defaultNcfType || 'Consumo (B02)')}
+                              </span>
+                              <span
+                                 title="RNC o cédula registrados"
+                                 className="inline-flex items-center gap-2 rounded-xl border border-[#DCE7E6] bg-white px-3 py-1.5 text-[11px] font-bold text-[#1B3034]"
+                              >
+                                 <FileText size={13} className="text-[#6C7F80]" />
+                                 <span className="font-mono">{selectedCustomer.taxId || 'Sin RNC / cédula'}</span>
+                              </span>
                            </div>
 
-                           {/* Mini Stats (Financial Summary Header) */}
-                           <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mt-8 pt-6 border-t border-gray-100">
-                              <div>
-                                 <p className="text-xs text-gray-400 font-bold uppercase tracking-wider mb-1">Total Gastado</p>
-                                 <p className="text-xl font-black text-gray-800">{config.currencySymbol}{formatMoney(selectedCustomer.totalSpent)}</p>
+                           {/* Métricas financieras en una sola línea, con importes
+                               tabulares para que se comparen de un vistazo. */}
+                           <div className="mt-5 grid grid-cols-2 gap-2 md:grid-cols-4">
+                              <div className="rounded-xl border border-[#E1E9E8] bg-white px-3 py-2">
+                                 <p className="text-[9px] font-black uppercase tracking-[0.14em] text-[#9DAEAD]">Gastado</p>
+                                 <p className="mt-0.5 text-base font-black text-[#132124] tabular-nums">{config.currencySymbol}{formatMoney(selectedCustomer.totalSpent)}</p>
                               </div>
-                              <div>
-                                 <p className="text-xs text-gray-400 font-bold uppercase tracking-wider mb-1">Deuda Actual</p>
-                                 <p className="text-xl font-black text-red-500">
+                              <div className="rounded-xl border border-[#E1E9E8] bg-white px-3 py-2">
+                                 <p className="text-[9px] font-black uppercase tracking-[0.14em] text-[#9DAEAD]">Deuda</p>
+                                 <p className={`mt-0.5 text-base font-black tabular-nums ${toSafeNumber(selectedCustomer.currentDebt) > 0 ? 'text-[#C0392B]' : 'text-[#132124]'}`}>
                                     {config.currencySymbol}{formatMoney(selectedCustomer.currentDebt)}
                                  </p>
                               </div>
-                              <div>
-                                 <p className="text-xs text-gray-400 font-bold uppercase tracking-wider mb-1">Saldo a Favor / Anticipos</p>
-                                 <p className="text-xl font-black text-emerald-500">
-                                    {config.currencySymbol}{formatMoney(selectedCustomer.wallet?.balance)}
-                                 </p>
+                              <div className="rounded-xl border border-[#E1E9E8] bg-white px-3 py-2">
+                                 <p className="text-[9px] font-black uppercase tracking-[0.14em] text-[#9DAEAD]">A favor</p>
+                                 <p className="mt-0.5 text-base font-black text-[#00877F] tabular-nums">{config.currencySymbol}{formatMoney(selectedCustomer.wallet?.balance)}</p>
                               </div>
-                              <div className="md:border-l md:pl-6">
-                                 <p className="text-xs text-gray-400 font-bold uppercase tracking-wider mb-1">Total Neto</p>
-                                 <p className={`text-xl font-black ${(toSafeNumber(selectedCustomer.wallet?.balance) - toSafeNumber(selectedCustomer.currentDebt)) >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>
+                              <div className="rounded-xl border border-[#DCEBD0] bg-[#F5FBEA] px-3 py-2">
+                                 <p className="text-[9px] font-black uppercase tracking-[0.14em] text-[#7A8C4A]">Neto</p>
+                                 <p className={`mt-0.5 text-base font-black tabular-nums ${(toSafeNumber(selectedCustomer.wallet?.balance) - toSafeNumber(selectedCustomer.currentDebt)) >= 0 ? 'text-[#4C6B12]' : 'text-[#C0392B]'}`}>
                                     {config.currencySymbol}{formatMoney(toSafeNumber(selectedCustomer.wallet?.balance) - toSafeNumber(selectedCustomer.currentDebt))}
                                  </p>
                               </div>
@@ -2366,6 +2451,23 @@ const CustomerManagement: React.FC<CustomerManagementProps> = ({
                      fetchActivities();
                   }
                }}
+            />
+         )}
+
+         {isEgoEnrollOpen && (
+            <EgoClubEnrollModal
+               config={config}
+               onClose={() => setIsEgoEnrollOpen(false)}
+               onEnrolled={() => { void refreshLoyaltyQueue(); }}
+            />
+         )}
+
+         {isEgoCardOpen && selectedCustomer && (
+            <EgoClubCard
+               config={config}
+               customer={selectedCustomer}
+               currencySymbol={config.currencySymbol || 'RD$'}
+               onClose={() => setIsEgoCardOpen(false)}
             />
          )}
       </div>

@@ -405,8 +405,18 @@ builtAt=$(date '+%Y-%m-%d %H:%M:%S %Z')
 EOF
 
 sync_release_artifacts "${DEST_DIR}" "${RELEASE_HISTORY_DIR}"
+
+# Entregables dentro del repositorio: <repo>/APK (además del historial externo).
+REPO_RELEASE_DIR="${REPO_ROOT}/APK"
+mkdir -p "${REPO_RELEASE_DIR}"
+cp "${APK_DEST}" "${REPO_RELEASE_DIR}/"
+cp "${METADATA_DEST}" "${REPO_RELEASE_DIR}/"
+cp "${REPORT_DEST}" "${REPO_RELEASE_DIR}/"
+info "APK copiado al repositorio en ${REPO_RELEASE_DIR}"
+
 info "APK listo"
 echo "APK=${APK_DEST}"
+echo "REPO_APK=${REPO_RELEASE_DIR}/Clic-Pos-${VERSION_NAME}-release.apk"
 echo "METADATA=${METADATA_DEST}"
 echo "REPORT=${REPORT_DEST}"
 echo "SOURCE_COMMIT=${SOURCE_COMMIT_SHORT}"

@@ -39,6 +39,7 @@ import {
    isRefundLikeTransaction
 } from '../utils/fiscal/fiscalHelpers';
 import { AzulGatewayError, azulMcmService } from '../services/payments/AzulMcmService';
+import { CardNetEcrError, cardNetEcrService } from '../services/payments/CardNetEcrService';
 import {
    createPaymentIntegrationAuditEvent,
    dispatchAuditEventConfigUpdate,
@@ -111,7 +112,7 @@ type GatewayProgressOverlayState = {
    detail: string;
 };
 
-type RefundRequestMode = 'STANDARD' | 'AZUL_GATEWAY_REFUND';
+type RefundRequestMode = 'STANDARD' | 'AZUL_GATEWAY_REFUND' | 'CARDNET_GATEWAY_REFUND';
 
 type AzulVoidResolution =
    | { mode: 'NOT_AZUL' }
@@ -403,6 +404,182 @@ const canOfferAzulRefundAction = (
    config: BusinessConfig
 ): boolean => resolveAzulRefundResolution(transaction, transaction.items || [], config).mode === 'REFUND';
 
+/** Ventana en la que el POS ofrece la anulación CardNET (CN02) en lugar de la devolución (CN03). */
+const CARDNET_VOID_WINDOW_MS = 24 * 60 * 60 * 1000;
+
+/** Proveedor integrado con el que se cobró el ticket. */
+const resolveIntegratedGatewayProvider = (transaction: Transaction): 'AZUL' | 'CARDNET' | null => {
+   const positivePayments = getPositivePayments(transaction);
+   if (positivePayments.some(payment => payment.gatewayProvider === 'CARDNET')) return 'CARDNET';
+   if (positivePayments.some(payment => payment.gatewayProvider === 'AZUL')) return 'AZUL';
+   return null;
+};
+
+type CardNetOperationPayload = {
+   integration: PaymentIntegrationDefinition;
+   payment: PaymentEntry;
+   amount: number;
+   taxAmount: number;
+   invoiceTicket: string;
+   host: string;
+   referenceNumber: string;
+   elapsedMs: number;
+};
+
+type CardNetOperationResolution =
+   | { mode: 'NOT_CARDNET' }
+   | { mode: 'BLOCK'; message: string }
+   | ({ mode: 'VOID' } & CardNetOperationPayload)
+   | ({ mode: 'REFUND' } & CardNetOperationPayload);
+
+/** "Ticket de la Factura" (6 posiciones) que CardNET exige para ventas y devoluciones. */
+const resolveCardNetInvoiceTicket = (payment: PaymentEntry, transaction: Transaction): string => {
+   const candidates = [
+      payment.gatewayInvoiceNumber,
+      payment.gatewayOrderNumber,
+      transaction.displayId,
+      transaction.id,
+   ];
+
+   for (const candidate of candidates) {
+      const digits = String(candidate || '').replace(/[^0-9]/g, '');
+      if (digits.length >= 6) return digits.slice(-6);
+   }
+
+   return String(Math.abs(Math.trunc(Date.now())) % 1_000_000).padStart(6, '0');
+};
+
+/** HOST CardNET (06=Crédito, 07=Débito, 08=AMEX, 09=Privada, 10=Peaje, 12=Otro). */
+const resolveCardNetHost = (payment: PaymentEntry): string => {
+   const stored = pickGatewayPaymentString(payment, ['gatewayHost', 'host', 'HOST']);
+   if (/^\d{2}$/.test(stored)) return stored;
+
+   const product = pickGatewayPaymentString(payment, ['gatewayCardProduct', 'productType']).toUpperCase();
+   if (product === 'AC' || product === 'AD') return '08';
+   if (product === 'DC' || product === 'DS') return '09';
+   if (product === 'OT') return '12';
+
+   return '06';
+};
+
+/** "Num. De Ref." (3 posiciones) que identifica la transacción aprobada en el terminal. */
+const resolveCardNetReferenceNumber = (payment: PaymentEntry): string => {
+   const raw = pickGatewayPaymentString(payment, ['gatewaySequenceNumber', 'sequenceNumber']);
+   return /^\d{1,3}$/.test(raw) ? raw : '';
+};
+
+/**
+ * Decide qué operación corresponde con el terminal CardNET:
+ * anulación (CN02) mientras la venta siga en el lote abierto y devolución (CN03)
+ * después del cierre. Las reglas de integridad (ticket completo, una sola
+ * transacción integrada, integración activa) son las mismas que ya usa AZUL.
+ */
+const resolveCardNetOperationResolution = (
+   transaction: Transaction,
+   refundItems: CartItem[],
+   config: BusinessConfig
+): CardNetOperationResolution => {
+   const positivePayments = getPositivePayments(transaction);
+   const cardNetPayments = positivePayments.filter(payment => payment.gatewayProvider === 'CARDNET');
+
+   if (cardNetPayments.length === 0) return { mode: 'NOT_CARDNET' };
+
+   if (transaction.status === 'PARTIAL_REFUND' || transaction.status === 'REFUNDED') {
+      return {
+         mode: 'BLOCK',
+         message: 'La venta ya tiene devoluciones registradas. Las operaciones CardNET automáticas solo se permiten sobre tickets intactos.',
+      };
+   }
+
+   if (positivePayments.length !== 1 || cardNetPayments.length !== 1) {
+      return {
+         mode: 'BLOCK',
+         message: 'La operación CardNET solo está disponible cuando la venta fue cobrada 100% con una única transacción integrada de tarjeta.',
+      };
+   }
+
+   if (!isFullRefundSelection(transaction, refundItems)) {
+      return {
+         mode: 'BLOCK',
+         message: 'CardNET solo opera sobre la venta completa. Las devoluciones parciales todavía no están soportadas en el POS.',
+      };
+   }
+
+   const salePayment = cardNetPayments[0];
+   const integration = (config.integrations || []).find(candidate =>
+      candidate.id === salePayment.gatewayIntegrationId && candidate.provider === 'CARDNET'
+   );
+
+   if (!integration || !integration.isEnabled) {
+      return {
+         mode: 'BLOCK',
+         message: 'La integración CardNET original ya no está disponible o está inactiva en esta terminal.',
+      };
+   }
+
+   const gatewayAmount = roundToTwo(Number(salePayment.gatewayProcessedAmount ?? salePayment.amount ?? 0));
+   if (!amountsMatch(gatewayAmount, roundToTwo(Number(transaction.total || 0)))) {
+      return {
+         mode: 'BLOCK',
+         message: 'La venta CardNET no coincide 100% con el total del ticket. Por ahora el POS solo opera ventas totalmente cobradas por una sola transacción integrada.',
+      };
+   }
+
+   const terminalConfig = config.terminals?.find(t => t.id === transaction.terminalId)?.config;
+   const fiscalSummary = calculateTransactionFiscalSummary(transaction, config, { terminalConfig });
+   const taxAmount = roundToTwo(Number(
+      salePayment.gatewayProcessedTaxAmount ?? fiscalSummary.taxTotal ?? transaction.taxAmount ?? 0
+   ));
+   const elapsedMs = Date.now() - new Date(transaction.date).getTime();
+   const payload: CardNetOperationPayload = {
+      integration,
+      payment: salePayment,
+      amount: gatewayAmount,
+      taxAmount,
+      invoiceTicket: resolveCardNetInvoiceTicket(salePayment, transaction),
+      host: resolveCardNetHost(salePayment),
+      referenceNumber: resolveCardNetReferenceNumber(salePayment),
+      elapsedMs,
+   };
+
+   const withinVoidWindow = Number.isFinite(elapsedMs) && elapsedMs <= CARDNET_VOID_WINDOW_MS;
+
+   if (withinVoidWindow) {
+      if (integration.capabilities?.void === false) {
+         return { mode: 'BLOCK', message: 'Esta integración CardNET no tiene habilitada la capacidad de anulación.' };
+      }
+
+      if (!payload.referenceNumber) {
+         return {
+            mode: 'BLOCK',
+            message: 'La venta no tiene el Num. De Ref. que CardNET necesita para anular (CN02). Ejecute el cierre y use la devolución (CN03).',
+         };
+      }
+
+      return { mode: 'VOID', ...payload };
+   }
+
+   if (integration.capabilities?.refund === false) {
+      return { mode: 'BLOCK', message: 'Esta integración CardNET no tiene habilitada la capacidad de devolución.' };
+   }
+
+   return { mode: 'REFUND', ...payload };
+};
+
+/** Habilita el botón de operación con el adquirente cuando el ticket la soporta. */
+const canOfferIntegratedGatewayAction = (
+   transaction: Transaction,
+   config: BusinessConfig
+): boolean => {
+   const provider = resolveIntegratedGatewayProvider(transaction);
+   if (provider === 'CARDNET') {
+      const resolution = resolveCardNetOperationResolution(transaction, transaction.items || [], config);
+      return resolution.mode === 'VOID' || resolution.mode === 'REFUND';
+   }
+
+   return canOfferAzulRefundAction(transaction, config);
+};
+
 // --- SUB-COMPONENTS ---
 
 const SalesSummaryBar: React.FC<{ kpis: any; config: BusinessConfig }> = ({ kpis, config }) => (
@@ -674,7 +851,7 @@ const TicketDetailDrawer: React.FC<{
    onClose: () => void;
    onPrint: (tx: Transaction) => void;
    onRequestRefund: (tx: Transaction) => void;
-   onRequestAzulRefund: (tx: Transaction) => void;
+   onRequestGatewayRefund: (tx: Transaction) => void;
    onRetryFiscalDocument?: (tx: Transaction) => Promise<string>;
    customers?: Customer[];
    onCorrectFiscalDocument?: (tx: Transaction, correction: FiscalDocumentCorrectionInput) => Promise<Transaction>;
@@ -688,7 +865,7 @@ const TicketDetailDrawer: React.FC<{
    themeText: string;
    themeBg: string;
    users: User[];
-}> = ({ tx, config, onClose, onPrint, onRequestRefund, onRequestAzulRefund, onRetryFiscalDocument, customers = [], onCorrectFiscalDocument, reviewFlags, onSendEmail, onFlagForReview, themeText, themeBg, users }) => {
+}> = ({ tx, config, onClose, onPrint, onRequestRefund, onRequestGatewayRefund, onRetryFiscalDocument, customers = [], onCorrectFiscalDocument, reviewFlags, onSendEmail, onFlagForReview, themeText, themeBg, users }) => {
    const [isRetryingFiscal, setIsRetryingFiscal] = useState(false);
    const [retryFeedback, setRetryFeedback] = useState<string | null>(null);
    const [isCorrectionOpen, setIsCorrectionOpen] = useState(false);
@@ -726,7 +903,8 @@ const TicketDetailDrawer: React.FC<{
    const historyTerminalName = resolveHistoryTerminalName(tx, config.terminals || []);
    const canRetryFiscal = canRetryFiscalTransaction(tx) && Boolean(onRetryFiscalDocument);
    const retryActionLabel = getFiscalRetryActionLabel(tx) || 'Reintentar envío';
-   const canRequestAzulRefund = !isRefundDoc && tx.status !== 'REFUNDED' && canOfferAzulRefundAction(tx, config);
+   const canRequestGatewayRefund = !isRefundDoc && tx.status !== 'REFUNDED' && canOfferIntegratedGatewayAction(tx, config);
+   const gatewayActionLabel = resolveIntegratedGatewayProvider(tx) === 'CARDNET' ? 'CardNET' : 'AZUL';
    const displayNcf = getFiscalDisplayNcf(tx);
    const displayFiscalCode = getFiscalDisplayCode(tx);
    const canCorrectFiscal = isElectronicFiscalTransaction(tx)
@@ -1237,12 +1415,12 @@ const TicketDetailDrawer: React.FC<{
                            <RotateCcw size={18} /> Devolución / Anular
                         </button>
                      )}
-                     {canRequestAzulRefund && (
+                     {canRequestGatewayRefund && (
                         <button
-                           onClick={() => onRequestAzulRefund(tx)}
+                           onClick={() => onRequestGatewayRefund(tx)}
                            className="flex min-w-[180px] flex-1 items-center justify-center gap-2 py-3 bg-slate-900 text-white rounded-2xl font-bold hover:bg-slate-800 transition-all shadow-lg"
                         >
-                           <CreditCard size={18} /> Refund AZUL
+                           <CreditCard size={18} /> Refund {gatewayActionLabel}
                         </button>
                      )}
                   </div>
@@ -2247,7 +2425,7 @@ const TicketHistory: React.FC<TicketHistoryProps> = ({ transactions, config, cur
    ) => {
       let refundOptions: RefundProcessingOptions | undefined;
 
-      if (originalTx.erpRefundSource && requestMode === 'AZUL_GATEWAY_REFUND') {
+      if (originalTx.erpRefundSource && requestMode !== 'STANDARD') {
          alert('Las devoluciones de tarjeta integradas todavía no están disponibles para facturas consultadas en ERP.');
          return;
       }
@@ -2509,6 +2687,149 @@ const TicketHistory: React.FC<TicketHistoryProps> = ({ transactions, config, cur
             alert(error instanceof Error ? error.message : 'No se pudo completar la anulación AZUL.');
             return;
          }
+         }
+      }
+
+      if (!originalTx.erpRefundSource && requestMode === 'CARDNET_GATEWAY_REFUND') {
+         const cardNetResolution = resolveCardNetOperationResolution(originalTx, refundItems, config);
+
+         if (cardNetResolution.mode === 'BLOCK') {
+            alert(cardNetResolution.message);
+            return;
+         }
+
+         if (cardNetResolution.mode === 'NOT_CARDNET') {
+            alert('Este ticket no fue cobrado con el terminal CardNET.');
+            return;
+         }
+
+         const { integration, payment, amount, taxAmount, invoiceTicket, host, referenceNumber } = cardNetResolution;
+         const isVoid = cardNetResolution.mode === 'VOID';
+         const providerLabel = integration.name || 'CardNET';
+         const auditAction = isVoid ? 'SALE_CANCELLATION' : 'REFUND';
+
+         setGatewayProgress({
+            title: isVoid ? 'Procesando anulación' : 'Procesando devolución',
+            providerLabel,
+            detail: isVoid
+               ? 'Enviando la anulación (CN02) al terminal CardNET.'
+               : 'Enviando la devolución (CN03) al terminal CardNET.',
+         });
+
+         try {
+            const cardNetResponse = isVoid
+               ? await cardNetEcrService.saleCancellation(integration, {
+                  host,
+                  referenceNumber,
+               })
+               : await cardNetEcrService.refund(integration, {
+                  amount,
+                  itbis: taxAmount,
+                  invoiceTicket,
+               });
+
+            await persistIntegrationAuditEvent(integration, {
+               action: auditAction,
+               status: 'SUCCESS',
+               message: cardNetResponse.responseMessage
+                  || (isVoid ? 'Anulación aprobada por CardNET.' : 'Devolución aprobada por CardNET.'),
+               requestDetails: {
+                  Trama: isVoid ? 'CN02' : 'CN03',
+                  Monto: amount.toFixed(2),
+                  ...(isVoid
+                     ? { Host: host, NumRef: referenceNumber }
+                     : { Itbis: taxAmount.toFixed(2), Ticket: invoiceTicket }),
+               },
+               responseDetails: {
+                  Lote: cardNetResponse.batchNumber,
+                  Modo: cardNetResponse.entryMode,
+                  Tarjeta: cardNetResponse.cardBrand,
+                  Endpoint: integration.baseUrl,
+               },
+               responseCode: cardNetResponse.responseCode,
+               responseMessage: cardNetResponse.responseMessage,
+               authorizationCode: cardNetResponse.authorizationCode || payment.gatewayAuthorizationCode,
+               referenceNumber: cardNetResponse.referenceNumber,
+               invoiceNumber: cardNetResponse.invoiceNumber,
+               sequenceNumber: cardNetResponse.sequenceNumber,
+               maskedPan: cardNetResponse.maskedPan,
+               entryMode: cardNetResponse.entryMode,
+               merchantId: cardNetResponse.merchantId,
+               terminalId: cardNetResponse.terminalId,
+            });
+
+            refundOptions = {
+               settlementMode: isVoid ? 'CARD_VOID' : 'CARD_REFUND',
+               skipWalletDeposit: true,
+               autoPrintIntegratedArtifacts: true,
+               refundPayments: [{
+                  id: `${isVoid ? 'void' : 'refund'}-${Date.now()}`,
+                  method: 'CARD',
+                  methodLabel: `${isVoid ? 'Anulación' : 'Devolución'} CARDNET`,
+                  methodIcon: 'CreditCard',
+                  amount,
+                  timestamp: new Date(),
+                  gatewayProvider: 'CARDNET',
+                  gatewayIntegrationId: integration.id,
+                  gatewayTransactionType: isVoid ? 'VOID' : 'REFUND',
+                  gatewayStatus: cardNetResponse.approved ? 'APPROVED' : 'DECLINED',
+                  gatewayResponseCode: cardNetResponse.responseCode,
+                  gatewayResponseMessage: cardNetResponse.responseMessage,
+                  gatewayOrderNumber: invoiceTicket,
+                  gatewayProcessedAmount: amount,
+                  gatewayProcessedTaxAmount: isVoid ? 0 : taxAmount,
+                  gatewayAuthorizationCode: cardNetResponse.authorizationCode || payment.gatewayAuthorizationCode,
+                  gatewayReference: cardNetResponse.referenceNumber || payment.gatewayReference,
+                  gatewaySequenceNumber: cardNetResponse.sequenceNumber,
+                  gatewayInvoiceNumber: cardNetResponse.invoiceNumber || invoiceTicket,
+                  gatewayBatchNumber: cardNetResponse.batchNumber,
+                  gatewayMerchantId: cardNetResponse.merchantId,
+                  gatewayTerminalId: cardNetResponse.terminalId,
+                  gatewayMaskedPan: cardNetResponse.maskedPan || payment.gatewayMaskedPan,
+                  gatewayCardBrand: cardNetResponse.cardBrand || payment.gatewayCardBrand,
+                  gatewayEntryMode: cardNetResponse.entryMode || payment.gatewayEntryMode,
+                  gatewayHost: cardNetResponse.host || payment.gatewayHost,
+                  gatewayCardProduct: cardNetResponse.productType || payment.gatewayCardProduct,
+                  gatewayReceiptMerchant: cardNetResponse.receiptMerchant,
+                  gatewayReceiptClient: cardNetResponse.receiptClient,
+                  gatewaySignatureData: cardNetResponse.signatureData,
+                  gatewayRequireSignature: false,
+                  gatewayRawResponse: cardNetResponse.rawResponse,
+               }],
+            };
+
+            setGatewayProgress({
+               title: 'Registrando devolución',
+               providerLabel,
+               detail: 'Generando la nota de crédito e imprimiendo comprobantes.',
+            });
+         } catch (error) {
+            const cardNetError = error instanceof CardNetEcrError ? error : null;
+
+            await persistIntegrationAuditEvent(integration, {
+               action: auditAction,
+               status: 'FAILED',
+               message: error instanceof Error ? error.message : 'No se pudo completar la operación con CardNET.',
+               requestDetails: {
+                  Trama: isVoid ? 'CN02' : 'CN03',
+                  Monto: amount.toFixed(2),
+                  Endpoint: integration.baseUrl,
+               },
+               responseDetails: {
+                  Estado: 'Error',
+                  ...(cardNetError?.transcript ? { Traza: cardNetError.transcript.slice(0, 400) } : {}),
+               },
+               responseCode: cardNetError?.parsed?.responseCode,
+               responseMessage: cardNetError?.parsed?.responseMessage,
+               authorizationCode: cardNetError?.parsed?.sale?.authorizationCode,
+               referenceNumber: cardNetError?.parsed?.sale?.referenceNumber,
+               merchantId: integration.merchantId,
+               terminalId: integration.terminalId,
+            });
+
+            setGatewayProgress(null);
+            alert(error instanceof Error ? error.message : 'No se pudo completar la operación CardNET.');
+            return;
          }
       }
 
@@ -2910,8 +3231,12 @@ const TicketHistory: React.FC<TicketHistoryProps> = ({ transactions, config, cur
                setRefundTx(tx);
                setIsRefundModalOpen(true);
             }}
-            onRequestAzulRefund={(tx) => {
-               setRefundRequestMode('AZUL_GATEWAY_REFUND');
+            onRequestGatewayRefund={(tx) => {
+               setRefundRequestMode(
+                  resolveIntegratedGatewayProvider(tx) === 'CARDNET'
+                     ? 'CARDNET_GATEWAY_REFUND'
+                     : 'AZUL_GATEWAY_REFUND'
+               );
                setRefundTx(tx);
                setIsRefundModalOpen(true);
             }}
@@ -2973,6 +3298,7 @@ const TicketHistory: React.FC<TicketHistoryProps> = ({ transactions, config, cur
             onConfirm={handleConfirmRefundFromModal}
             currencySymbol={config.currencySymbol}
             mode={refundRequestMode}
+            providerLabel={refundRequestMode === 'CARDNET_GATEWAY_REFUND' ? 'CardNET' : 'AZUL'}
             remainingQuantities={refundRemainingQuantities}
          />
 

@@ -36,6 +36,13 @@ import {
   IngenicoAzulWebApiNormalizedResult,
   ingenicoAzulWebApiService,
 } from '../services/payments/IngenicoAzulWebApiService';
+import {
+  CARDNET_METADATA_KEYS,
+  CardNetEcrError,
+  CardNetEcrNormalizedResult,
+  cardNetEcrService,
+} from '../services/payments/CardNetEcrService';
+import { CARDNET_FRAMING_LABELS, CardNetEcrFraming } from '../services/payments/CardNetEcrCodec';
 import { printGatewayReceipt } from '../utils/printer';
 
 interface IntegrationSettingsProps {
@@ -54,8 +61,8 @@ type AzulTerminalModalState = {
   mode: 'TOTALS' | 'SETTLE';
   isLoadingTotals: boolean;
   isSettling: boolean;
-  previewResult: AzulNormalizedResult | IngenicoAzulWebApiNormalizedResult | null;
-  settledResult: AzulNormalizedResult | IngenicoAzulWebApiNormalizedResult | null;
+  previewResult: AzulNormalizedResult | IngenicoAzulWebApiNormalizedResult | CardNetEcrNormalizedResult | null;
+  settledResult: AzulNormalizedResult | IngenicoAzulWebApiNormalizedResult | CardNetEcrNormalizedResult | null;
   errorMessage: string | null;
   printWarning: string | null;
 };
@@ -69,6 +76,24 @@ const PROVIDER_LABELS: Record<PaymentIntegrationProvider, string> = {
   STRIPE: 'Stripe',
 };
 
+const CARDNET_DEFAULT_ENDPOINT = '192.168.1.10:7060';
+const CARDNET_DEFAULT_TIMEOUT_MS = 90_000;
+
+const defaultTimeoutMsFor = (provider: PaymentIntegrationProvider): number => (
+  provider === 'INGENICO_AZUL_WEBAPI'
+    ? 65_000
+    : provider === 'CARDNET'
+      ? CARDNET_DEFAULT_TIMEOUT_MS
+      : 160_000
+);
+
+const resolveCardNetFraming = (integration: PaymentIntegrationDefinition): CardNetEcrFraming => {
+  const raw = String(integration.metadata?.[CARDNET_METADATA_KEYS.framing] || '').toUpperCase();
+  return raw === 'PLAIN' || raw === 'STX_ETX' || raw === 'STX_ETX_LRC'
+    ? raw as CardNetEcrFraming
+    : 'STX_ETX_LRC';
+};
+
 const createDefaultIntegration = (
   provider: PaymentIntegrationProvider = 'AZUL',
   environment: PaymentIntegrationEnvironment = 'TEST'
@@ -79,7 +104,9 @@ const createDefaultIntegration = (
       ? 'AZUL Desarrollo'
       : provider === 'INGENICO_AZUL_WEBAPI'
         ? 'Ingenico Lane 7000'
-        : `Nueva integración ${PROVIDER_LABELS[provider]}`,
+        : provider === 'CARDNET'
+          ? 'CardNET Caja Ethernet'
+          : `Nueva integración ${PROVIDER_LABELS[provider]}`,
   provider,
   isEnabled: true,
   environment,
@@ -90,13 +117,15 @@ const createDefaultIntegration = (
         : 'https://pagos.azul.com.do/POSWebServices/JSON/default.aspx')
       : provider === 'INGENICO_AZUL_WEBAPI'
         ? 'http://localhost:9000'
-        : '',
+        : provider === 'CARDNET'
+          ? CARDNET_DEFAULT_ENDPOINT
+          : '',
   secondaryBaseUrl: '',
   merchantId: '',
   terminalId: '',
   auth1: '',
   auth2: '',
-  timeoutMs: provider === 'INGENICO_AZUL_WEBAPI' ? 65000 : 160000,
+  timeoutMs: defaultTimeoutMsFor(provider),
   capabilities: {
     sale: true,
     getLastTrx: provider !== 'INGENICO_AZUL_WEBAPI',
@@ -204,6 +233,7 @@ const IntegrationSettings: React.FC<IntegrationSettingsProps> = ({ config, onUpd
       auth1: provider === 'AZUL' ? editingIntegration.auth1 : '',
       auth2: provider === 'AZUL' ? editingIntegration.auth2 : '',
       capabilities: draft.capabilities,
+      metadata: {},
     });
     setTestResult(null);
   };
@@ -214,7 +244,8 @@ const IntegrationSettings: React.FC<IntegrationSettingsProps> = ({ config, onUpd
     setEditingIntegration({
       ...editingIntegration,
       environment,
-      baseUrl: defaults.baseUrl,
+      // CardNET trabaja contra la misma IP en producción y en pruebas: no se pisa el endpoint.
+      baseUrl: editingIntegration.provider === 'CARDNET' ? editingIntegration.baseUrl : defaults.baseUrl,
     });
     setTestResult(null);
   };
@@ -244,10 +275,12 @@ const IntegrationSettings: React.FC<IntegrationSettingsProps> = ({ config, onUpd
         ? await azulMcmService.testConnection(editingIntegration)
         : editingIntegration.provider === 'INGENICO_AZUL_WEBAPI'
           ? await ingenicoAzulWebApiService.testConnection(editingIntegration)
-          : {
-            success: false,
-            message: 'La prueba en vivo todavía no está disponible para este proveedor.',
-          };
+          : editingIntegration.provider === 'CARDNET'
+            ? await cardNetEcrService.testConnection(editingIntegration)
+            : {
+              success: false,
+              message: 'La prueba en vivo todavía no está disponible para este proveedor.',
+            };
       await persistAuditEvent(createPaymentIntegrationAuditEvent(editingIntegration, {
         action: 'GET_LAST_TRX',
         status: result.success ? 'SUCCESS' : 'FAILED',
@@ -255,11 +288,21 @@ const IntegrationSettings: React.FC<IntegrationSettingsProps> = ({ config, onUpd
         requestDetails: {
           Origen: 'Prueba de conexión',
           TrxType: editingIntegration.provider === 'INGENICO_AZUL_WEBAPI' ? 'Config' : 'Sale',
+          ...(editingIntegration.provider === 'CARDNET'
+            ? {
+              Endpoint: editingIntegration.baseUrl,
+              Puerto: '7060',
+              Handshake: 'ENQ/ACK',
+            }
+            : {}),
         },
         responseDetails: {
           MerchantId: result.merchantId || editingIntegration.merchantId || '',
           TerminalId: result.terminalId || editingIntegration.terminalId || '',
           Estado: result.success ? 'Conectado' : 'Fallido',
+          ...(editingIntegration.provider === 'CARDNET' && 'latencyMs' in result && result.latencyMs
+            ? { LatenciaMs: String(result.latencyMs) }
+            : {}),
         },
         responseCode: result.responseCode,
         responseMessage: result.responseMessage,
@@ -271,6 +314,7 @@ const IntegrationSettings: React.FC<IntegrationSettingsProps> = ({ config, onUpd
       const message = error instanceof Error ? error.message : 'No se pudo probar la conexión.';
       const gatewayError = error instanceof AzulGatewayError ? error : null;
       const ingenicoError = error instanceof IngenicoAzulWebApiError ? error : null;
+      const cardNetError = error instanceof CardNetEcrError ? error : null;
       await persistAuditEvent(createPaymentIntegrationAuditEvent(editingIntegration, {
         action: 'GET_LAST_TRX',
         status: 'FAILED',
@@ -291,11 +335,13 @@ const IntegrationSettings: React.FC<IntegrationSettingsProps> = ({ config, onUpd
         responseCode:
           gatewayError?.normalized?.responseCode ||
           gatewayError?.response?.ResponseCode ||
-          ingenicoError?.normalized?.responseCode,
+          ingenicoError?.normalized?.responseCode ||
+          cardNetError?.parsed?.responseCode,
         responseMessage:
           gatewayError?.normalized?.responseMessage ||
           gatewayError?.response?.ResponseMessage ||
-          ingenicoError?.normalized?.responseMessage,
+          ingenicoError?.normalized?.responseMessage ||
+          cardNetError?.parsed?.responseMessage,
         merchantId: gatewayError?.normalized?.merchantId,
         terminalId: gatewayError?.normalized?.terminalId || ingenicoError?.normalized?.terminalId,
       }));
@@ -447,21 +493,34 @@ const IntegrationSettings: React.FC<IntegrationSettingsProps> = ({ config, onUpd
         : prev
     ));
 
+    const providerLabel = PROVIDER_LABELS[integration.provider] || integration.provider;
+
     try {
       const result = integration.provider === 'AZUL'
         ? await azulMcmService.pinpadSettle(integration)
-        : await ingenicoAzulWebApiService.closeTotals(integration);
+        : integration.provider === 'CARDNET'
+          ? await cardNetEcrService.closeBatch(integration)
+          : await ingenicoAzulWebApiService.closeTotals(integration);
       await persistAuditEvent(createPaymentIntegrationAuditEvent(integration, {
         action: 'PINPAD_SETTLE',
         status: 'SUCCESS',
-        message: `Cierre de lote completado correctamente en ${integration.provider === 'AZUL' ? 'AZUL' : 'Ingenico Azul WebAPI'}.`,
+        message: `Cierre de lote completado correctamente en ${providerLabel}.`,
         requestDetails: {
           MerchantId: integration.merchantId || '',
           TerminalId: integration.terminalId || '',
+          ...(integration.provider === 'CARDNET'
+            ? { Trama: 'CN01', Endpoint: integration.baseUrl }
+            : {}),
         },
         responseDetails: {
           Batch: result.batchNumber || result.responseFields.BTC || '',
           Estado: result.responseMessage || result.responseCode,
+          ...(integration.provider === 'CARDNET' && 'closeRecords' in result && result.closeRecords.length > 0
+            ? {
+              Host: result.closeRecords.map(record => record.host).filter(Boolean).join(' / '),
+              Ventas: result.closeRecords.map(record => record.saleCount).filter(Boolean).join(' / '),
+            }
+            : {}),
         },
         responseCode: result.responseCode,
         responseMessage: result.responseMessage,
@@ -473,17 +532,17 @@ const IntegrationSettings: React.FC<IntegrationSettingsProps> = ({ config, onUpd
       const receipt = result.receiptMerchant || result.receiptClient || '';
       if (receipt) {
         const printed = await printGatewayReceipt(config, {
-          providerLabel: integration.provider === 'AZUL' ? 'AZUL' : 'Ingenico Azul WebAPI',
+          providerLabel,
           copyLabel: 'Cierre de lote',
           voucherText: receipt,
           referenceId: `${integration.id}-settle-${Date.now()}`,
           terminalId: integration.terminalId,
         });
         if (!printed) {
-          printWarning = `${integration.provider === 'AZUL' ? 'AZUL' : 'Ingenico Azul WebAPI'} cerró el lote, pero no se pudo imprimir el comprobante automáticamente.`;
+          printWarning = `${providerLabel} cerró el lote, pero no se pudo imprimir el comprobante automáticamente.`;
         }
       } else {
-        printWarning = `${integration.provider === 'AZUL' ? 'AZUL' : 'Ingenico Azul WebAPI'} no devolvió un comprobante legible para imprimir después del cierre.`;
+        printWarning = `${providerLabel} no devolvió un comprobante legible para imprimir después del cierre.`;
       }
 
       setAzulTerminalModal(prev => (
@@ -498,9 +557,10 @@ const IntegrationSettings: React.FC<IntegrationSettingsProps> = ({ config, onUpd
           : prev
       ));
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'No se pudo cerrar el lote en AZUL.';
+      const message = error instanceof Error ? error.message : `No se pudo cerrar el lote en ${providerLabel}.`;
       const gatewayError = error instanceof AzulGatewayError ? error : null;
       const ingenicoError = error instanceof IngenicoAzulWebApiError ? error : null;
+      const cardNetError = error instanceof CardNetEcrError ? error : null;
       await persistAuditEvent(createPaymentIntegrationAuditEvent(integration, {
         action: 'PINPAD_SETTLE',
         status: 'FAILED',
@@ -511,15 +571,18 @@ const IntegrationSettings: React.FC<IntegrationSettingsProps> = ({ config, onUpd
         },
         responseDetails: {
           Estado: 'Error',
+          ...(cardNetError?.transcript ? { Traza: cardNetError.transcript.slice(0, 400) } : {}),
         },
         responseCode:
           gatewayError?.normalized?.responseCode ||
           gatewayError?.response?.ResponseCode ||
-          ingenicoError?.normalized?.responseCode,
+          ingenicoError?.normalized?.responseCode ||
+          cardNetError?.parsed?.responseCode,
         responseMessage:
           gatewayError?.normalized?.responseMessage ||
           gatewayError?.response?.ResponseMessage ||
-          ingenicoError?.normalized?.responseMessage,
+          ingenicoError?.normalized?.responseMessage ||
+          cardNetError?.parsed?.responseMessage,
         merchantId: gatewayError?.normalized?.merchantId || ingenicoError?.normalized?.merchantId,
         terminalId: gatewayError?.normalized?.terminalId || ingenicoError?.normalized?.terminalId,
       }));
@@ -548,6 +611,17 @@ const IntegrationSettings: React.FC<IntegrationSettingsProps> = ({ config, onUpd
       ...patch,
     });
     setTestResult(null);
+  };
+
+  const updateEditingMetadata = (key: string, value: string) => {
+    if (!editingIntegration) return;
+    const nextMetadata = { ...(editingIntegration.metadata || {}) };
+    if (value.trim()) {
+      nextMetadata[key] = value;
+    } else {
+      delete nextMetadata[key];
+    }
+    updateEditingIntegration({ metadata: nextMetadata });
   };
 
   return (
@@ -585,7 +659,7 @@ const IntegrationSettings: React.FC<IntegrationSettingsProps> = ({ config, onUpd
             </div>
             <div className="rounded-3xl border border-slate-200 bg-white p-5">
               <p className="text-xs font-bold uppercase tracking-widest text-slate-400">Escalable</p>
-              <p className="mt-2 text-lg font-black text-slate-800">AZUL hoy, CardNet después</p>
+              <p className="mt-2 text-lg font-black text-slate-800">AZUL, Ingenico y CardNET</p>
               <p className="mt-1 text-sm text-slate-500">El POS ya queda preparado para múltiples adquirentes.</p>
             </div>
           </div>
@@ -607,7 +681,7 @@ const IntegrationSettings: React.FC<IntegrationSettingsProps> = ({ config, onUpd
               <div className="rounded-3xl border border-dashed border-gray-300 bg-white p-10 text-center">
                 <CreditCard className="mx-auto mb-3 text-gray-300" size={32} />
                 <h3 className="text-lg font-black text-gray-700">Todavía no hay integraciones</h3>
-                <p className="mt-2 text-sm text-gray-500">Crea primero AZUL aquí y luego podrás asignarla en Métodos de Pago.</p>
+                <p className="mt-2 text-sm text-gray-500">Crea primero una integración (AZUL, Ingenico o CardNET) y luego asígnala en Métodos de Pago.</p>
               </div>
             ) : (
               <div className="space-y-3">
@@ -616,7 +690,13 @@ const IntegrationSettings: React.FC<IntegrationSettingsProps> = ({ config, onUpd
                     key={integration.id}
                     className="flex items-center gap-5 rounded-3xl border border-gray-200 bg-white p-5 shadow-sm transition-all hover:shadow-md"
                   >
-                    <div className={`flex h-14 w-14 items-center justify-center rounded-2xl text-white shadow-md ${integration.provider === 'AZUL' ? 'bg-blue-600' : 'bg-slate-700'}`}>
+                    <div className={`flex h-14 w-14 items-center justify-center rounded-2xl text-white shadow-md ${
+                      integration.provider === 'AZUL'
+                        ? 'bg-blue-600'
+                        : integration.provider === 'CARDNET'
+                          ? 'bg-emerald-600'
+                          : 'bg-slate-700'
+                    }`}>
                       <CreditCard size={28} />
                     </div>
 
@@ -633,17 +713,28 @@ const IntegrationSettings: React.FC<IntegrationSettingsProps> = ({ config, onUpd
                           {integration.environment}
                         </span>
                       </div>
-                      <p className="mt-1 text-sm text-gray-500">{integration.baseUrl || 'Sin URL base configurada.'}</p>
+                      <p className="mt-1 text-sm text-gray-500">
+                        {integration.provider === 'CARDNET'
+                          ? `Terminal Ethernet: ${integration.baseUrl || 'sin IP configurada'}`
+                          : (integration.baseUrl || 'Sin URL base configurada.')}
+                      </p>
                       <div className="mt-2 flex flex-wrap gap-2 text-[11px] font-medium text-gray-500">
                         {integration.merchantId && <span>Merchant: {integration.merchantId}</span>}
                         {integration.terminalId && <span>Terminal: {integration.terminalId}</span>}
-                        <span>Timeout: {Math.round((integration.timeoutMs || 160000) / 1000)}s</span>
+                        <span>Timeout: {Math.round((integration.timeoutMs || defaultTimeoutMsFor(integration.provider)) / 1000)}s</span>
+                        {integration.provider === 'CARDNET' && (
+                          <span>Enlace: {resolveCardNetFraming(integration)}</span>
+                        )}
                         <span>Eventos: {(integration.auditEvents || []).length}</span>
                       </div>
                     </div>
 
                     <div className="flex items-center gap-2">
-                      {integration.isEnabled && (integration.provider === 'AZUL' || integration.provider === 'INGENICO_AZUL_WEBAPI') && (
+                      {integration.isEnabled && (
+                        integration.provider === 'AZUL'
+                        || integration.provider === 'INGENICO_AZUL_WEBAPI'
+                        || integration.provider === 'CARDNET'
+                      ) && (
                         <>
                           {integration.provider === 'AZUL' && (
                             <button
@@ -764,7 +855,11 @@ const IntegrationSettings: React.FC<IntegrationSettingsProps> = ({ config, onUpd
                 <div className="grid gap-4 md:grid-cols-2">
                   <div className="md:col-span-2">
                     <label className="mb-1 block text-xs font-bold uppercase text-indigo-400">
-                      {editingIntegration.provider === 'INGENICO_AZUL_WEBAPI' ? 'URL Base WebAPI Local' : 'URL Base JSON'}
+                      {editingIntegration.provider === 'CARDNET'
+                        ? 'IP / Endpoint del terminal Ethernet'
+                        : editingIntegration.provider === 'INGENICO_AZUL_WEBAPI'
+                          ? 'URL Base WebAPI Local'
+                          : 'URL Base JSON'}
                     </label>
                     <div className="relative">
                       <input
@@ -773,9 +868,11 @@ const IntegrationSettings: React.FC<IntegrationSettingsProps> = ({ config, onUpd
                         onChange={(event) => updateEditingIntegration({ baseUrl: event.target.value })}
                         className="w-full rounded-xl border border-indigo-100 bg-white p-3 pl-10 outline-none transition-all focus:ring-2 focus:ring-indigo-400"
                         placeholder={
-                          editingIntegration.provider === 'INGENICO_AZUL_WEBAPI'
-                            ? 'http://localhost:9000'
-                            : 'https://pruebas.azul.com.do/POSWebServices/JSON/default.aspx'
+                          editingIntegration.provider === 'CARDNET'
+                            ? '192.168.1.10:7060'
+                            : editingIntegration.provider === 'INGENICO_AZUL_WEBAPI'
+                              ? 'http://localhost:9000'
+                              : 'https://pruebas.azul.com.do/POSWebServices/JSON/default.aspx'
                         }
                       />
                       <Server className="absolute left-3 top-1/2 -translate-y-1/2 text-indigo-300" size={16} />
@@ -850,14 +947,71 @@ const IntegrationSettings: React.FC<IntegrationSettingsProps> = ({ config, onUpd
                       </div>
                     </>
                   )}
+                  {editingIntegration.provider === 'CARDNET' && (
+                    <>
+                      <div>
+                        <label className="mb-1 block text-xs font-bold uppercase text-indigo-400">Terminal ID (8)</label>
+                        <div className="relative">
+                          <input
+                            type="text"
+                            inputMode="numeric"
+                            value={editingIntegration.terminalId || ''}
+                            onChange={(event) => updateEditingIntegration({ terminalId: event.target.value })}
+                            className="w-full rounded-xl border border-indigo-100 bg-white p-3 pl-10 outline-none transition-all focus:ring-2 focus:ring-indigo-400"
+                            placeholder="12345678"
+                          />
+                          <Smartphone className="absolute left-3 top-1/2 -translate-y-1/2 text-indigo-300" size={16} />
+                        </div>
+                      </div>
+                      <div>
+                        <label className="mb-1 block text-xs font-bold uppercase text-indigo-400">Merchant ID (15)</label>
+                        <div className="relative">
+                          <input
+                            type="text"
+                            inputMode="numeric"
+                            value={editingIntegration.merchantId || ''}
+                            onChange={(event) => updateEditingIntegration({ merchantId: event.target.value })}
+                            className="w-full rounded-xl border border-indigo-100 bg-white p-3 pl-10 outline-none transition-all focus:ring-2 focus:ring-indigo-400"
+                            placeholder="000000000000000"
+                          />
+                          <Server className="absolute left-3 top-1/2 -translate-y-1/2 text-indigo-300" size={16} />
+                        </div>
+                      </div>
+                      <div>
+                        <label className="mb-1 block text-xs font-bold uppercase text-indigo-400">Multi-Merchant (2)</label>
+                        <input
+                          type="text"
+                          inputMode="numeric"
+                          value={editingIntegration.metadata?.[CARDNET_METADATA_KEYS.multiMerchantId] || ''}
+                          onChange={(event) => updateEditingMetadata(CARDNET_METADATA_KEYS.multiMerchantId, event.target.value)}
+                          className="w-full rounded-xl border border-indigo-100 bg-white p-3 outline-none transition-all focus:ring-2 focus:ring-indigo-400"
+                          placeholder="Opcional · 99 = todas las empresas"
+                        />
+                      </div>
+                      <div>
+                        <label className="mb-1 block text-xs font-bold uppercase text-indigo-400">Delimitadores de trama</label>
+                        <select
+                          value={resolveCardNetFraming(editingIntegration)}
+                          onChange={(event) => updateEditingMetadata(CARDNET_METADATA_KEYS.framing, event.target.value)}
+                          className="w-full rounded-xl border border-indigo-100 bg-white p-3 outline-none transition-all focus:ring-2 focus:ring-indigo-400"
+                        >
+                          {Object.entries(CARDNET_FRAMING_LABELS).map(([value, label]) => (
+                            <option key={value} value={value}>{label}</option>
+                          ))}
+                        </select>
+                      </div>
+                    </>
+                  )}
                   <div>
                     <label className="mb-1 block text-xs font-bold uppercase text-indigo-400">Timeout (ms)</label>
                     <input
                       type="number"
                       min={1000}
                       step={1000}
-                      value={editingIntegration.timeoutMs || 160000}
-                      onChange={(event) => updateEditingIntegration({ timeoutMs: Number(event.target.value) || 160000 })}
+                      value={editingIntegration.timeoutMs || defaultTimeoutMsFor(editingIntegration.provider)}
+                      onChange={(event) => updateEditingIntegration({
+                        timeoutMs: Number(event.target.value) || defaultTimeoutMsFor(editingIntegration.provider),
+                      })}
                       className="w-full rounded-xl border border-indigo-100 bg-white p-3 outline-none transition-all focus:ring-2 focus:ring-indigo-400"
                     />
                   </div>
@@ -868,6 +1022,21 @@ const IntegrationSettings: React.FC<IntegrationSettingsProps> = ({ config, onUpd
                     <p className="font-bold">Companion app Android local</p>
                     <p className="mt-1">
                       Esta integración espera que la APK de Azul Ingenico WebAPI esté instalada en el mismo dispositivo y exponga su API local, por defecto en <code>http://localhost:9000</code>.
+                    </p>
+                  </div>
+                )}
+
+                {editingIntegration.provider === 'CARDNET' && (
+                  <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-900">
+                    <p className="font-bold">Canal ECR Ethernet (CardNET v2.25)</p>
+                    <p className="mt-1">
+                      La caja actúa como ECR y se conecta por TCP al terminal CardNET en el puerto <code>7060</code>
+                      usando el diálogo <code>ENQ → ACK → SYN → EOM → ENQ</code>. Solo funciona en la APK Android
+                      (usa el plugin nativo <code>CardNetEcr</code>); el navegador no puede abrir sockets TCP.
+                    </p>
+                    <p className="mt-2">
+                      El terminal debe estar en modo caja e incluir la IP de esta terminal en su lista blanca.
+                      Con la venta (<code>CN00</code>) se envían monto, ITBIS, otros impuestos y el ticket de la factura.
                     </p>
                   </div>
                 )}
@@ -911,11 +1080,11 @@ const IntegrationSettings: React.FC<IntegrationSettingsProps> = ({ config, onUpd
                 </div>
               </div>
 
-              {editingIntegration.provider !== 'AZUL' && (
+              {editingIntegration.provider !== 'AZUL' && editingIntegration.provider !== 'CARDNET' && (
                 <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-700">
                   {editingIntegration.provider === 'INGENICO_AZUL_WEBAPI'
                     ? 'La integración local de Ingenico se usa desde métodos de pago tipo tarjeta. En esta primera entrega queda soportado el flujo principal de cobro en caja.'
-                    : 'Esta primera entrega deja el modelo listo para múltiples adquirentes, pero el flujo operativo en caja está implementado ahora mismo para AZUL e Ingenico Azul WebAPI.'}
+                    : 'Esta primera entrega deja el modelo listo para múltiples adquirentes, pero el flujo operativo en caja está implementado ahora mismo para AZUL, Ingenico Azul WebAPI y CardNET ECR.'}
                 </div>
               )}
             </div>
@@ -956,7 +1125,10 @@ const IntegrationSettings: React.FC<IntegrationSettingsProps> = ({ config, onUpd
           settledResult={azulTerminalModal.settledResult}
           errorMessage={azulTerminalModal.errorMessage}
           printWarning={azulTerminalModal.printWarning}
-          allowSettleWithoutPreview={azulTerminalModal.integration.provider === 'INGENICO_AZUL_WEBAPI'}
+          allowSettleWithoutPreview={
+            azulTerminalModal.integration.provider === 'INGENICO_AZUL_WEBAPI'
+            || azulTerminalModal.integration.provider === 'CARDNET'
+          }
           onRefreshTotals={() => {
             void handleLoadAzulTotals(azulTerminalModal.integration, azulTerminalModal.mode);
           }}

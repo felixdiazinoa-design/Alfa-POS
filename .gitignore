@@ -11,6 +11,8 @@ node_modules
 dist
 dist-ssr
 *.local
+# Caché local de npm cuando el HOME no es escribible (entornos de agente/CI)
+.npm-cache
 
 # Editor directories and files
 .vscode/*
@@ -28,6 +30,20 @@ dist-ssr
 *.sqlite*
 *.tsbuildinfo
 
+# Material de firma: nunca debe versionarse
+android/key.properties
+android/keys/
+*.keystore
+*.jks
+
+# Entregables APK generados por APK/build-apk.sh, gradlew o scripts/release-android.sh
+APK/*.apk
+APK/*.sha256
+APK/*.json
+APK/*.txt
+APK/logs/
+APK/unsigned/
+
 # Large config and data files
 config.json
 items.json
@@ -44,3 +60,4 @@ debug*.cjs
 diagnostic-native-patches.json
 
 scripts/diagnostics/__pycache__/
+APK/.last-version-code

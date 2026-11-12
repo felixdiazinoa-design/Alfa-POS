@@ -93,6 +93,7 @@ const describePromotionTarget = (promotion: Promotion) => {
    const typeLabelMap: Record<Exclude<Promotion['targetType'], 'ALL'>, string> = {
       PRODUCT: 'Producto',
       VARIANT: 'Variante',
+      BRAND: 'Marca',
       CATEGORY: 'Categoría',
       GROUP: 'Grupo',
       SEASON: 'Temporada',
@@ -522,6 +523,7 @@ const PromotionBuilder: React.FC<PromotionBuilderProps> = ({ products, config, t
                                     disabled={editingPromotion?.targetType !== 'VARIANT'}
                                  >Variantes específicas (ERP)</option>
                                  <option value="CATEGORY">Categoría Completa</option>
+                                 <option value="BRAND">Por Marca</option>
                                  <option value="SEASON">Por Temporada</option>
                                  <option value="GROUP">Por Grupo/Colección</option>
                                  <option value="ALL">Cualquier Producto</option>

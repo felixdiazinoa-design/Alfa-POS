@@ -2781,3 +2781,34 @@ export const ensureErpSyncLifecycle = async (params: EnsureLifecycleParams): Pro
 
     return { bootstrap, registered, heartbeat, outbox };
 };
+
+/**
+ * POST genérico al canal de sincronización del ERP (`{base}/api/sync/<path>`).
+ *
+ * Es el mismo canal que usan `/inbox`, `/bootstrap` y `/terminals`: sin `x-role-id`,
+ * con el contexto de la terminal (tenant, empresa, sucursal, binding y device) en el
+ * cuerpo. Existe para que la fidelización (EGO Club) viaje por aquí y no por
+ * `/api/settings/crm/loyalty/*`, que exige RBAC.
+ *
+ * Devuelve `null` si el canal no está configurado (POS aún sin vincular): en ese
+ * caso la operación debe quedarse en la cola local, no perderse.
+ */
+export const postErpSyncJson = async <T>(
+    path: string,
+    body: Record<string, unknown> = {},
+): Promise<T | null> => {
+    if (!isConfigured()) return null;
+
+    const identity = getStoredTenantIdentity();
+    const binding = getStoredErpSyncBinding();
+
+    return postJson<T>(path, {
+        ...body,
+        tenant_id: identity.tenantId || binding.tenantId || null,
+        company_ref: identity.tenantSlug || null,
+        company_id: binding.companyId || null,
+        store_id: binding.storeId || null,
+        terminal_binding_id: binding.terminalId || null,
+        device_id: resolveLocalDeviceId() || null,
+    });
+};

@@ -952,7 +952,7 @@ export interface CurrencyRateSchedule {
   error?: string;
 }
 
-export type PaymentMethod = 'CASH' | 'CARD' | 'QR' | 'WALLET' | 'ADVANCE' | 'OTHER' | 'CREDIT' | 'STORE_CREDIT' | 'UBER_EATS';
+export type PaymentMethod = 'CASH' | 'CARD' | 'QR' | 'WALLET' | 'ADVANCE' | 'OTHER' | 'CREDIT' | 'STORE_CREDIT' | 'UBER_EATS' | 'LOYALTY';
 export type PaymentIntegrationProvider =
   | 'AZUL'
   | 'INGENICO_AZUL_WEBAPI'
@@ -969,7 +969,8 @@ export type PaymentIntegrationAuditAction =
   | 'GET_LAST_TRX'
   | 'PINPAD_INIT'
   | 'PINPAD_TRANSACTION_TOTALS'
-  | 'PINPAD_SETTLE';
+  | 'PINPAD_SETTLE'
+  | 'TIP_ADJUST';
 export type PaymentIntegrationAuditStatus = 'SUCCESS' | 'FAILED';
 
 export interface PaymentIntegrationAuditEvent {
@@ -1205,22 +1206,55 @@ export interface ScaleLabelConfig {
 
 
 
+/**
+ * Nivel del programa EGO Club tal como lo publica el ERP.
+ *
+ * `spendThreshold` / `earnUnitsPer100` / `minRedemptionUnits` son los campos reales del
+ * snapshot: el nivel se deriva del gasto anual (no del saldo), el cashback es
+ * `earnUnitsPer100` por cada RD$100 elegibles, y `minRedemptionUnits` es el umbral
+ * mínimo de canje del nivel.
+ *
+ * `minPoints`, `color` e `icon` se conservan opcionales por compatibilidad con las
+ * pantallas heredadas de fidelización que derivaban el nivel del saldo de puntos.
+ */
 export interface LoyaltyTier {
   id: string;
   name: string;
-  minPoints: number;
-  color: string;
+  spendThreshold?: number;
+  earnUnitsPer100?: number;
+  minRedemptionUnits?: number;
+  /** @deprecated El nivel se deriva del gasto anual, no del saldo de puntos. */
+  minPoints?: number;
+  color?: string;
   icon?: string;
 }
 
 export interface LoyaltyConfig {
   isEnabled: boolean;
+  /** 'UNIFIED' = una sola cuenta de puntos entre marcas/tiendas. */
+  earnMode?: 'UNIFIED' | string;
   earnRate: number; // Points per 1 unit of currency (e.g., 0.1 for 1 point per $10)
   redeemRate: number; // Value of 1 point (e.g., 0.10)
   minRedemptionPoints: number;
   expirationMonths: number;
   excludedCategories: string[];
   tiers?: LoyaltyTier[];
+}
+
+/** Canje de puntos aplicado a un ticket. El saldo siempre lo dicta el ERP. */
+export interface LoyaltyRedemption {
+  /** Clave idempotente del canje en el POS. */
+  id: string;
+  customerId: string;
+  points: number;
+  /** Valor monetario cubierto por el canje (points × redeemRate). */
+  value: number;
+  redeemRate: number;
+  reason: string;
+  /** Saldo resultante según el snapshot devuelto por el ERP. */
+  balanceAfter?: number;
+  redeemedAt: string;
+  terminalId?: string;
 }
 
 
@@ -1891,6 +1925,12 @@ export interface Transaction {
   priorAdvancePaid?: number;
   balanceDueAtSale?: number;
 
+  /**
+   * Canje de puntos EGO Club aplicado al ticket.
+   * El saldo es el que devolvió el ERP; el POS no lo calcula ni lo descuenta por su cuenta.
+   */
+  loyaltyRedemption?: LoyaltyRedemption;
+
   // Accounts Receivable (CxC)
   dueDate?: string;         // ISO Date
   pendingBalance?: number;  // Amount still owed on this transaction
@@ -2121,8 +2161,19 @@ export type PromotionType =
   | 'PAYMENT_METHOD_DISCOUNT'
   | 'PREPAID_PACKAGE'
   | 'NEXT_PURCHASE_COUPON';
-export type PromotionTargetType = 'ALL' | 'PRODUCT' | 'VARIANT' | 'CATEGORY' | 'GROUP' | 'SEASON';
+export type PromotionTargetType = 'ALL' | 'PRODUCT' | 'VARIANT' | 'BRAND' | 'CATEGORY' | 'GROUP' | 'SEASON';
 export type PromotionBenefitType = 'DISCOUNT_PERCENT' | 'FIXED_PRICE' | 'CASHBACK' | 'POINTS_MULTIPLIER';
+
+/** Niveles del programa EGO Club, resueltos por el ERP a partir del gasto anual. */
+export type LoyaltyTierId = 'STANDARD' | 'GOLD' | 'BLACK';
+
+/**
+ * Audiencia de una promoción por nivel EGO Club.
+ * Sin `tiers` (o con la lista vacía) la promoción aplica a todos, como antes.
+ */
+export interface PromotionAudience {
+  tiers?: LoyaltyTierId[];
+}
 
 export interface PromotionApplicationTrace {
   promotionId: string;
@@ -2134,7 +2185,7 @@ export interface PromotionApplicationTrace {
 }
 
 export interface PromotionCondition {
-  type: 'HAS_WALLET' | 'CUSTOMER_TIER' | 'HAS_POINTS_MIN';
+  type: 'HAS_WALLET' | 'CUSTOMER_TIER' | 'HAS_POINTS_MIN' | 'MIN_QUANTITY';
   value: string; // "GOLD", "100", "TRUE"
 }
 
@@ -2149,7 +2200,9 @@ export interface Promotion {
 
   // Trigger
   trigger?: {
-    type: 'TOTAL_SPEND' | 'ITEM_QTY' | 'MIN_TICKET_AMOUNT';
+    // El ERP puede degradar tipos desconocidos, así que se acepta cualquier
+    // regla declarada (p. ej. 'SEGUNDO_PAR') además de las conocidas.
+    type: 'TOTAL_SPEND' | 'ITEM_QTY' | 'MIN_TICKET_AMOUNT' | (string & {});
     value: number;
     excludeCategories?: string[];
     isRecursive?: boolean;
@@ -2160,7 +2213,7 @@ export interface Promotion {
 
   // Target
   targetType: PromotionTargetType;
-  targetValue?: string; // ID of Product (parent for VARIANT), Category, Group, Season
+  targetValue?: string; // ID of Product (parent for VARIANT), Category, Group, Season, Brand
   targetLabel?: string;
   targetRefs?: string[];
   targetStrategy?: {
@@ -2169,6 +2222,9 @@ export interface Promotion {
     tieBreaker?: 'FIRST_ADDED' | 'LAST_ADDED';
     allowSelfTrigger?: boolean;
   };
+
+  // Audiencia (EGO Club). Vacío o ausente = aplica a todos.
+  audience?: PromotionAudience;
 
   // Benefit
   benefitType?: PromotionBenefitType; // Optional for backward compatibility, defaults to DISCOUNT implied by type
@@ -2449,6 +2505,10 @@ export interface PaymentEntry {
   gatewayMaskedPan?: string;
   gatewayCardBrand?: string;
   gatewayEntryMode?: string;
+  /** HOST CardNET de la transacción (06=Crédito, 07=Débito, 08=AMEX, 09=Privada, 10=Peaje, 11=tPago, 12=Otro). */
+  gatewayHost?: string;
+  /** Tipo de producto CardNET (VC, MC, MD, AC, DC, OT...). */
+  gatewayCardProduct?: string;
   gatewayReceiptMerchant?: string;
   gatewayReceiptClient?: string;
   gatewaySignatureData?: string;

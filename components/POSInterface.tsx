@@ -13,7 +13,8 @@ import {
    ShoppingBag, ScanBarcode, ArrowRight, Clock, Camera, AlertTriangle, BrushCleaning,
    MessageSquare, PlayCircle, Download, Lock, ArrowUpRight, Landmark,
    UserCheck, StickyNote, Inbox, Printer, QrCode, Box, Package, MapPin,
-   Cloud, RefreshCw, CloudOff, Layout, ChefHat, Building2, ClipboardCheck, Undo2
+   Cloud, RefreshCw, CloudOff, Layout, ChefHat, Building2, ClipboardCheck, Undo2, Coins,
+   CheckCircle2
 
 
 } from 'lucide-react';
@@ -23,11 +24,12 @@ import {
    DeviceRole, DeviceFormFactor, DeviceOrientation,
    Customer, Product, CartItem, Transaction, ParkedTicket, Warehouse, NCFType, FiscalDocumentCode,
    PaymentEntry, Table, Reservation, ZReport, Room, Permission, ProductPrice, RedeemedCouponRef, ProductVariant,
-   OrderServiceType, CashMovement
+   OrderServiceType, CashMovement, LoyaltyRedemption
 } from '../types';
 import { hasProductPromotion } from '../utils/promotionEngine';
 import { getDefaultFiscalProvider, getEffectiveFiscalComplianceConfig, getFiscalReserveAlert, isTerminalFiscalReceiptRequired, mapElectronicFiscalCodeToLegacy, resolveCreditNoteFiscalCode, resolveSaleFiscalCode } from '../utils/fiscal/fiscalHelpers';
 import { calculateTransactionTaxSummary } from '../utils/taxSummary';
+import { getTierBadgeClass, getTierLabel, isEgoClubEnabled } from '../utils/egoClub';
 import UnifiedPaymentModal from './PaymentModal';
 import {
    evaluateCreditSupervisorGate,
@@ -42,6 +44,8 @@ import { resolveVariantSalesPrice } from '../utils/variantSalesPrice';
 import ScaleModal from './ScaleModal';
 import GlobalDiscountModal from './GlobalDiscountModal';
 import LoyaltyScanModal from './LoyaltyScanModal';
+import LoyaltyRedeemModal from './LoyaltyRedeemModal';
+import { buildRedemptionId, getLoyaltyChannelStatus } from '../services/loyalty/LoyaltyService';
 import TrackingSelectionModal from './TrackingSelectionModal';
 import { db } from '../utils/db';
 import { validateTerminalDocument } from '../utils/validation';
@@ -69,6 +73,10 @@ import { syncManager } from '../services/sync/SyncManager';
 import { isSyncFeatureEnabled } from '../services/sync/SyncFeatureFlags';
 import { requestJson } from '../services/network/httpClient';
 import ProductTableSupermarket from './ProductTableSupermarket';
+import { countPendingLoyaltyOperations } from '../utils/loyaltyOutbox';
+import LoyaltySyncPanel from './LoyaltySyncPanel';
+import CardReaderModal from './CardReaderModal';
+import { resolveErpSyncApiBase } from '../utils/erpBaseUrl';
 import SupermarketTicketSummary from './SupermarketTicketSummary';
 import BarcodeScannerModal from './BarcodeScannerModal';
 import { printCashMovementReceipt, printComanda, printPrecuenta } from '../utils/printer';
@@ -182,6 +190,8 @@ export interface POSInterfaceProps {
    customers: Customer[];
    products: Product[];
    onUpdateProducts: (products: Product[]) => void;
+   /** Actualiza la colección de clientes (p. ej. saldo de puntos tras un canje). */
+   onUpdateCustomers?: (updater: (customers: Customer[]) => Customer[]) => void;
    warehouses: Warehouse[];
    cart: CartItem[];
    transactions: Transaction[];
@@ -1119,6 +1129,7 @@ const POSInterface: React.FC<POSInterfaceProps> = ({
    currentUser,
    products,
    onUpdateProducts,
+   onUpdateCustomers,
    roles,
    users,
    customers,
@@ -1587,6 +1598,65 @@ const POSInterface: React.FC<POSInterfaceProps> = ({
 
       return { byReference, byName };
    }, [catalogProducts, warehouses]);
+   useEffect(() => {
+      let cancelled = false;
+      const refresh = async () => {
+         try {
+            const pending = await countPendingLoyaltyOperations();
+            if (!cancelled) setPendingLoyaltyOps(pending);
+         } catch {
+            if (!cancelled) setPendingLoyaltyOps(0);
+         }
+      };
+      void refresh();
+      const timer = setInterval(() => { void refresh(); }, 15000);
+      const onOnline = () => { void refresh(); };
+      window.addEventListener('online', onOnline);
+      return () => {
+         cancelled = true;
+         clearInterval(timer);
+         window.removeEventListener('online', onOnline);
+      };
+   }, [cart.length]);
+
+   // Sonda ligera al canal de sync del ERP. Si no responde, el chip del resumen
+   // se pinta en rojo aunque el equipo tenga internet.
+   useEffect(() => {
+      let cancelled = false;
+      const probe = async () => {
+         const base = resolveErpSyncApiBase();
+         if (!base) {
+            if (!cancelled) setErpReachable(false);
+            return;
+         }
+         try {
+            const controller = new AbortController();
+            const timeout = setTimeout(() => controller.abort(), 4000);
+            const response = await fetch(`${base.replace(/\/$/, '')}/health`, {
+               method: 'GET',
+               signal: controller.signal,
+               cache: 'no-store',
+            });
+            clearTimeout(timeout);
+            if (!cancelled) setErpReachable(response.ok);
+         } catch {
+            if (!cancelled) setErpReachable(false);
+         }
+      };
+      void probe();
+      const timer = setInterval(() => { void probe(); }, 20000);
+      const onOnline = () => { void probe(); };
+      const onOffline = () => setErpReachable(false);
+      window.addEventListener('online', onOnline);
+      window.addEventListener('offline', onOffline);
+      return () => {
+         cancelled = true;
+         clearInterval(timer);
+         window.removeEventListener('online', onOnline);
+         window.removeEventListener('offline', onOffline);
+      };
+   }, []);
+
    const salesUsers = useMemo(() => getTerminalSnapshotSellers(config, terminalId), [config, terminalId]);
    const resolveSalespersonLabel = useCallback((salespersonId?: string | null) => {
       return resolveTerminalSellerName(salespersonId, config, terminalId, users) || 'Vendedor';
@@ -2183,13 +2253,32 @@ const POSInterface: React.FC<POSInterfaceProps> = ({
    }, [searchTerm]);
 
    const handleCatalogSearchInput = useCallback((value: string) => {
+      // Tarjeta digital EGO Club: el QR trae "EGOCLUB:<id o tarjeta>". Al leerlo
+      // con el escáner no debe buscar un producto, sino seleccionar al socio.
+      const clubMatch = /^EGOCLUB:(.+)$/i.exec(String(value || '').trim());
+      if (clubMatch) {
+         const ref = clubMatch[1].trim();
+         const match = (customers || []).find(candidate => (
+            String(candidate.id) === ref
+            || String((candidate as { cardNumber?: string }).cardNumber || '') === ref
+            || String(candidate.loyalty?.cardNumber || '') === ref
+         ));
+         setSearchTerm('');
+         if (match) {
+            onSelectCustomer(match);
+            setSuccessToast(`Socio EGO Club: ${match.name}`);
+         } else {
+            setSuccessToast('Tarjeta EGO Club no encontrada en esta caja');
+         }
+         return;
+      }
       const trace = beginPosInteraction('PRODUCT_SEARCH_INPUT', { inputLength: value.length });
       searchFilterTraceRef.current = trace;
       expectInteractionRender(trace, 'POS_INTERACTION_VIEW');
       setSearchTerm(value);
       markInteractionStateUpdate(trace, 1);
       markInteractionStage(trace, 'HANDLER_END');
-   }, []);
+   }, [customers, onSelectCustomer, setSuccessToast]);
    const [categoryFilter, setCategoryFilter] = useState('ALL');
    const [mobileView, setMobileView] = useState<'PRODUCTS' | 'TICKET'>('PRODUCTS');
    const returnToTicketView = useCallback(() => {
@@ -2198,10 +2287,26 @@ const POSInterface: React.FC<POSInterfaceProps> = ({
    }, []);
 
    const [showDiscountModal, setShowDiscountModal] = useState(false);
+   // Acciones por línea del ticket denso (modo supermercado)
+   const [lineDiscountCartId, setLineDiscountCartId] = useState<string | null>(null);
+   const [sellerPickerCartId, setSellerPickerCartId] = useState<string | null>(null);
+   // Operaciones de lealtad en cola: alimenta el chip 'N pendientes' del resumen.
+   const [pendingLoyaltyOps, setPendingLoyaltyOps] = useState(0);
+   const [showLoyaltySyncPanel, setShowLoyaltySyncPanel] = useState(false);
+   const [showCardReader, setShowCardReader] = useState(false);
+   // Alcanzabilidad real del ERP: distinto de estar "online" en la red local.
+   const [erpReachable, setErpReachable] = useState(true);
    const [showSplitModal, setShowSplitModal] = useState(false);
    const [showPaymentModal, setShowPaymentModal] = useState(false);
+
+   // Canje EGO Club del ticket actual (ya autorizado por el ERP).
+   const [loyaltyRedemption, setLoyaltyRedemption] = useState<LoyaltyRedemption | null>(null);
+   const [showLoyaltyRedeemModal, setShowLoyaltyRedeemModal] = useState(false);
    const [productionRoutingPrompt, setProductionRoutingPrompt] = useState<ProductionRoutingPromptState | null>(null);
    const [returnToTableMapAfterPayment, setReturnToTableMapAfterPayment] = useState(false);
+
+   // El canje sólo se ofrece si el ERP publica el canal de lealtad en esta caja.
+   const loyaltyRedeemChannel = getLoyaltyChannelStatus('/loyalty/redeem');
    const [showTicketOptions, setShowTicketOptions] = useState(false);
    const [showParkedList, setShowParkedList] = useState(false);
    const [showParkAliasModal, setShowParkAliasModal] = useState(false);
@@ -3373,7 +3478,10 @@ const POSInterface: React.FC<POSInterfaceProps> = ({
             variantInfo,
             appliedTaxIds: effectiveTaxIds,
             production_area_id: productionAreaId || undefined,
-            originalPrice: getProductPrice(product),
+            // Debe partir del mismo precio que se cobra (variante incluida). Si se
+            // usa el del padre, una variante más barata parece un descuento del 30 %
+            // y la línea muestra 'Descuento aplicado' sin que exista.
+            originalPrice: resolveVariantSalesPrice(selectedVariant, getProductPrice(product)),
             trackingData,
             ...consignmentPatch,
          };
@@ -3626,8 +3734,8 @@ const POSInterface: React.FC<POSInterfaceProps> = ({
    }, []);
 
    const hasPromotionForProduct = useCallback(
-      (product: Product) => hasProductPromotion(product, config, activeTerminalId),
-      [config, activeTerminalId]
+      (product: Product) => hasProductPromotion(product, config, activeTerminalId, selectedCustomer || undefined),
+      [config, activeTerminalId, selectedCustomer]
    );
 
    const openProductPromotionSheet = useCallback((product: Product) => {
@@ -4321,11 +4429,21 @@ const POSInterface: React.FC<POSInterfaceProps> = ({
    }, []);
 
    const renderTicketBrand = useCallback((compact = false) => (
-      <div className={`inline-flex flex-col items-center ${compact ? 'gap-1.5' : 'gap-2.5'}`}>
-         <div className={`inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-slate-950 shadow-sm ${compact ? 'px-2.5 py-1.5' : 'px-4 py-2.5'}`}>
-            <span className={`font-black uppercase tracking-[0.22em] text-slate-100 ${compact ? 'text-[0.72rem]' : 'text-[0.8rem]'}`}>CLIC</span>
-            <span className={`font-black uppercase tracking-[0.22em] text-sky-400 ${compact ? 'text-[0.72rem]' : 'text-[0.8rem]'}`}>POS</span>
-         </div>
+      <div className={`inline-flex items-center ${compact ? 'gap-2' : 'gap-2.5'}`}>
+         <svg
+            className={compact ? 'h-6 w-6 shrink-0' : 'h-8 w-8 shrink-0'}
+            viewBox="0 0 64 64"
+            aria-hidden="true"
+         >
+            <path fill="#132124" d="M7 52 26.5 12 35 29.2 23.8 52Z" />
+            <path fill="#00A7A0" d="M29.8 8H43l14 29.3-16.4-5.8Z" />
+            <path fill="#B8E336" d="m38.8 35 16.8 6L61 52H46.7Z" />
+            <path fill="#F4F7F6" d="m28.4 33.4 6.2 12.7L31.7 52h-8Z" />
+         </svg>
+         <span className={`whitespace-nowrap font-black tracking-[-0.02em] ${compact ? 'text-[0.95rem]' : 'text-[1.15rem]'}`}>
+            <span className="text-[#132124]">ALFA</span>
+            <span className="text-[#00A7A0]">-POS</span>
+         </span>
       </div>
    ), []);
    const cartQuantity = useMemo(
@@ -4471,9 +4589,17 @@ const POSInterface: React.FC<POSInterfaceProps> = ({
       ? activePaymentFraction?.parts.filter(part => part.status === 'PENDING').length || 0
       : 0;
    const isIntermediateFractionPayment = Boolean(nextPaymentFractionPart && pendingPaymentFractionCount > 1);
-   const amountDueNow = activeRecoveredReservation
+   const amountBeforeRedemption = activeRecoveredReservation
       ? (isRecoveredUberOrder ? 0 : reservationBalanceDue)
       : nextPaymentFractionPart?.amount ?? cartTotal;
+   // Canje EGO Club: cubre parte del ticket y se registra como forma de pago propia.
+   // Sólo aplica si el cliente del canje sigue siendo el cliente del ticket.
+   const loyaltyRedemptionApplied = loyaltyRedemption
+      && selectedCustomer
+      && loyaltyRedemption.customerId === selectedCustomer.id
+      ? Math.min(loyaltyRedemption.value, amountBeforeRedemption)
+      : 0;
+   const amountDueNow = Math.max(0, amountBeforeRedemption - loyaltyRedemptionApplied);
    useEffect(() => {
       recordCheckoutDiagnostic('CART_RENDER', { items: processedCart, expectedItemCount: cart.length, total: cartTotal,
          tableId: activeTable?.id, orderId: activeTable?.currentOrderId, terminalId: activeTerminalId });
@@ -4731,6 +4857,22 @@ const POSInterface: React.FC<POSInterfaceProps> = ({
    const primaryLoyaltyCard = selectedCustomer ? getPrimaryLoyaltyCard(selectedCustomer) : undefined;
    const currentPoints = primaryLoyaltyCard?.pointsBalance || 0;
 
+   // Nivel EGO Club del cliente del ticket (lo resuelve el ERP; aquí sólo se muestra).
+   const egoClubTierLabel = selectedCustomer && isEgoClubEnabled(config)
+      ? getTierLabel(config, selectedCustomer.tier)
+      : '';
+
+   // El canje pertenece al cliente y al ticket: si cambia el cliente o se vacía el
+   // ticket, se descarta para no arrastrar un descuento de otra venta.
+   useEffect(() => {
+      setLoyaltyRedemption(current => {
+         if (!current) return current;
+         if (!selectedCustomer || current.customerId !== selectedCustomer.id) return null;
+         if (cart.length === 0) return null;
+         return current;
+      });
+   }, [selectedCustomer, cart.length]);
+
    // --- VISOR SYNC ---
    useEffect(() => {
       const displayConfig = activeTerminalConfig?.hardware?.customerDisplay;
@@ -4774,6 +4916,40 @@ const POSInterface: React.FC<POSInterfaceProps> = ({
       setCouponCode('');
       setGlobalDiscount({ type: 'PERCENT', value: 0 });
    }, [cart.length, redeemedCoupon]);
+   /**
+    * Acciones por línea (ticket denso del modo supermercado).
+    *
+    * Duplicar clona la línea tal cual, sin volver a consultar catálogo ni stock:
+    * el stock se descuenta al cobrar, con el ticket ya cerrado.
+    */
+   const duplicateCartLine = useCallback((cartId: string) => {
+      onUpdateCart(prev => {
+         const index = prev.findIndex(item => item.cartId === cartId);
+         if (index < 0) return prev;
+         const source = prev[index];
+         const clone: CartItem = {
+            ...source,
+            cartId: `${source.cartId}-DUP-${Date.now().toString(36)}`,
+            createdAt: new Date().toISOString(),
+            dispatched: false,
+            restaurantCommittedAt: undefined,
+            ncf: undefined,
+         };
+         const next = [...prev];
+         next.splice(index + 1, 0, clone);
+         return next;
+      });
+   }, [onUpdateCart]);
+
+   const assignSellerToCartLine = useCallback((cartId: string, sellerId: string | null) => {
+      onUpdateCart(prev => prev.map(item => (
+         item.cartId === cartId
+            ? { ...item, salespersonId: sellerId || undefined }
+            : item
+      )));
+      setSellerPickerCartId(null);
+   }, [onUpdateCart]);
+
    const updateCartItem = async (updatedItem: CartItem | null, cartIdToDelete?: string) => {
       if (blockRecoveredUberOrderMutation('editar el pedido')) return;
       const isSubtotalizedMutation = hasSubtotalizedCart;
@@ -4883,6 +5059,20 @@ const POSInterface: React.FC<POSInterfaceProps> = ({
          }
       }
    };
+
+   /**
+    * Cambio de cantidad desde el menú de acciones de la línea.
+    *
+    * Reutiliza `updateCartItem` para que pasen las mismas validaciones que al
+    * editar desde el detalle (stock, ticket subtotalizado, permisos).
+    */
+   const changeCartLineQuantity = useCallback(async (cartId: string, quantity: number) => {
+      const target = (cart || []).find(item => item.cartId === cartId);
+      if (!target) return;
+      const next = Math.max(1, Math.floor(Number(quantity) || 1));
+      if (next === Math.abs(Number(target.quantity) || 1)) return;
+      await updateCartItem({ ...target, quantity: target.quantity < 0 ? -next : next });
+   }, [cart, updateCartItem]);
 
    const handleClearFreshCartItems = async () => {
       if (blockRecoveredUberOrderMutation('limpiar los artículos nuevos del ticket')) return;
@@ -5269,9 +5459,23 @@ const POSInterface: React.FC<POSInterfaceProps> = ({
             amount: reservationAdvance,
             timestamp: new Date()
          };
-         const paymentsForTransaction = reservationAdvance > 0
-            ? [...payments, reservationAdvancePayment]
-            : payments;
+         // Canje EGO Club como forma de pago no monetaria, con su propia línea y motivo,
+         // para que el cierre de caja cuadre contra el total del ticket.
+         const redemptionPayment: PaymentEntry[] = loyaltyRedemptionApplied > 0 && loyaltyRedemption
+            ? [{
+               id: `LOY-${loyaltyRedemption.id.slice(0, 8)}`,
+               method: 'LOYALTY',
+               methodId: 'LOYALTY',
+               methodLabel: `CANJE EGO CLUB (${loyaltyRedemption.points.toLocaleString('es-DO')} pts)`,
+               amount: loyaltyRedemptionApplied,
+               timestamp: new Date(),
+            }]
+            : [];
+         const paymentsForTransaction = [
+            ...payments,
+            ...(reservationAdvance > 0 ? [reservationAdvancePayment] : []),
+            ...redemptionPayment,
+         ];
          const creditAmount = sumCreditPaymentsBase(paymentsForTransaction);
          const hasCreditOverrideApproval = paymentsForTransaction.some(
             (payment) => paymentEntryIsCxCCredit(payment) && payment.creditOverrideApproved
@@ -5592,6 +5796,9 @@ const POSInterface: React.FC<POSInterfaceProps> = ({
                      : activeRecoveredReservation ? reservationBalanceDue : undefined,
                   walletDepositAmount: walletDepositAmount > 0 ? walletDepositAmount : undefined,
                   walletPaymentAmount: walletPaymentAmount > 0 ? walletPaymentAmount : undefined,
+                  loyaltyRedemption: loyaltyRedemptionApplied > 0 && loyaltyRedemption
+                     ? { ...loyaltyRedemption, value: loyaltyRedemptionApplied }
+                     : undefined,
                   serviceChargeAmount: cartTip,
                   serviceType: effectiveOrderServiceType,
                   serviceTaxPolicySnapshot: appliedServiceTaxPolicy,
@@ -5641,6 +5848,8 @@ const POSInterface: React.FC<POSInterfaceProps> = ({
                   );
                } else {
                   await Promise.resolve(onTransactionComplete(settledFinalTxn));
+                  // El canje ya se consumió en el ERP: se limpia para el siguiente ticket.
+                  setLoyaltyRedemption(null);
                   if (durableSaleCommit && settledFinalTxn.consignmentId) {
                      settledFinalTxn = await syncConsignmentSettlement(settledFinalTxn);
                   }
@@ -6961,8 +7170,12 @@ const POSInterface: React.FC<POSInterfaceProps> = ({
             if (!showTableMapButton) break;
             void handleBackToMap();
             break;
-         case 'loyalty_card': setShowLoyaltyModal(true); break;
-         case 'AGENDA': if (onOpenAgenda) onOpenAgenda(); break;
+         case 'loyalty_card':
+            // Antes solo mostraba la tarjeta del cliente ya seleccionado. Ahora
+            // abre el lector, que acepta cualquier tarjeta y la clasifica.
+            setShowCardReader(true);
+            break;
+         case 'HISTORY': onOpenHistory(); break;
       }
    };
 
@@ -7723,23 +7936,18 @@ const POSInterface: React.FC<POSInterfaceProps> = ({
                         <button
                            onClick={handleClearFreshCartItems}
                            disabled={!hasClearableFreshItems}
-                           className="h-10 w-10 rounded-xl bg-red-50 text-red-600 hover:bg-red-100 disabled:opacity-40 disabled:hover:text-red-600 flex items-center justify-center"
+                           className="flex h-9 w-9 items-center justify-center rounded-[10px] border border-[#F2DCD8] bg-white text-[#C0392B] transition-colors hover:bg-[#FDECEA] disabled:opacity-40"
                            title={hasClearableFreshItems ? 'Borrar artículos nuevos' : 'No hay artículos nuevos para borrar'}
                         >
-                           <Trash2 size={20} />
+                           <Trash2 size={16} />
                         </button>
                      )}
-                     <button onClick={openParkAliasModal} className="h-10 w-10 rounded-xl bg-blue-600 text-white shadow-sm shadow-blue-600/25 hover:bg-blue-700 flex items-center justify-center" title="Guardar Ticket">
+                     <button onClick={openParkAliasModal} className="flex h-9 w-9 items-center justify-center rounded-[10px] border border-[#E1E9E8] bg-white text-[#1B3034] transition-colors hover:bg-[#F4F7F6]" title="Guardar Ticket">
                         <Save size={20} />
                      </button>
-                     {!activeTable && (
-                        <button onClick={() => setShowParkedList(!showParkedList)} className="h-10 w-10 rounded-xl bg-orange-500 text-white shadow-sm shadow-orange-500/25 hover:bg-orange-600 relative flex items-center justify-center" title="Recuperar Ticket">
-                           <Inbox size={20} />
-                           {(Array.isArray(parkedTickets) ? parkedTickets : []).length > 0 && (
-                              <span className="absolute top-1 right-1 w-2.5 h-2.5 bg-orange-500 rounded-full border-2 border-white"></span>
-                           )}
-                        </button>
-                     )}
+                     {/* El botón 'Espera' del dock (acción PARK_LIST) aparece con la
+                         misma condición que este acceso (!activeTable), así que era un
+                         duplicado exacto: se retira de la cabecera. */}
                      <div className="relative group">
                         <button className="h-10 w-10 rounded-xl bg-emerald-600 text-white shadow-sm shadow-emerald-600/25 hover:bg-emerald-700 flex items-center justify-center"><MoreVertical size={20} /></button>
                         <div className="absolute right-0 top-full mt-2 w-48 bg-white rounded-xl shadow-xl border border-gray-100 hidden group-hover:block z-50">
@@ -7785,6 +7993,9 @@ const POSInterface: React.FC<POSInterfaceProps> = ({
                         </span>
                      )}
                   </button>
+                  {/* En modo supermercado el dock inferior ya da todas las acciones:
+                      este botón solo repetía el mismo panel y no hacía falta. */}
+                  {!isRetailMode && (
                   <button
                      type="button"
                      data-testid="mobile-actions-tab-button"
@@ -7801,11 +8012,14 @@ const POSInterface: React.FC<POSInterfaceProps> = ({
                         <Layers size={18} strokeWidth={2.3} />
                      </span>
                   </button>
+                  )}
                   {!isKioskMode && <OrderServiceTypeButton value={effectiveOrderServiceType} onClick={() => handleGridAction('TAKEOUT')} />}
                </div>
 
-               {/* CUSTOMER PILL (MOBILE) */}
-               {
+               {/* CUSTOMER PILL (solo móvil): en escritorio el cliente ya vive en
+                   la barra superior y repetirlo bajo el buscador duplicaba la
+                   misma información en dos franjas seguidas. */}
+               {isMobile && (
                   selectedCustomer ? (
                      <div className="flex items-center justify-between bg-blue-50 px-4 py-2 rounded-full border border-blue-100" onClick={onOpenCustomers}>
                         <div className="flex items-center gap-2">
@@ -7819,6 +8033,11 @@ const POSInterface: React.FC<POSInterfaceProps> = ({
                               <div className="w-6 h-6 bg-blue-200 text-blue-700 rounded-full flex items-center justify-center font-bold text-[10px]">{selectedCustomer.name.charAt(0)}</div>
                            )}
                            <span className="text-xs font-bold text-blue-900 truncate max-w-[150px]">{selectedCustomer.name}</span>
+                           {egoClubTierLabel && (
+                              <span className={`text-[9px] font-black uppercase tracking-wide px-1.5 py-0.5 rounded border ${getTierBadgeClass(selectedCustomer.tier)}`}>
+                                 {egoClubTierLabel}
+                              </span>
+                           )}
                         </div>
                         <div className="flex items-center gap-1">
                            <button
@@ -7836,7 +8055,7 @@ const POSInterface: React.FC<POSInterfaceProps> = ({
                         <UserPlus size={14} /> Asignar Cliente
                      </button>
                   )
-               }
+               )}
             </div >
 
             {/* DESKTOP: marca + mesa/comensales bajo el logo; retail: busqueda al centro; botones carrito/acciones alineados a la derecha (como APK 1.0.300) */}
@@ -7848,11 +8067,11 @@ const POSInterface: React.FC<POSInterfaceProps> = ({
 
                   {/* RETAIL MODE SEARCH BAR */}
                   {isRetailMode && (
-                     <div className="relative min-w-0 max-w-xl flex-1 group">
+                     <div className="relative mx-auto min-w-0 max-w-2xl flex-1 group">
                         <button
                            type="button"
                            onClick={() => handleRetailSearchSubmit()}
-                           className="absolute left-2 top-1/2 -translate-y-1/2 flex h-9 w-9 items-center justify-center rounded-lg text-gray-400 transition-all hover:bg-purple-50 hover:text-purple-600"
+                           className="absolute left-2 top-1/2 -translate-y-1/2 flex h-9 w-9 items-center justify-center rounded-lg bg-transparent text-[#9DAEAD] transition-colors hover:text-[#00877F] hover:bg-transparenturple-50 hover:text-purple-600"
                            title="Buscar"
                         >
                            <Search size={18} />
@@ -7873,12 +8092,12 @@ const POSInterface: React.FC<POSInterfaceProps> = ({
                               }
                            }}
                            autoFocus
-                           className="w-full pl-12 pr-12 py-2.5 bg-gray-100 rounded-xl border-none outline-none focus:bg-white focus:ring-2 focus:ring-purple-500 text-sm font-bold transition-all"
+                           className="w-full pl-12 pr-12 py-2.5 bg-white rounded-xl border border-[#DEE7E6] outline-none focus:border-[#00A7A0] focus:ring-2 focus:ring-[#00A7A0]/20 text-sm font-bold transition-all"
                         />
                         <button
                            type="button"
                            onClick={() => setSearchTerm('')}
-                           className="absolute right-2 top-1/2 -translate-y-1/2 flex h-8 w-8 items-center justify-center rounded-lg text-gray-400 transition-all hover:bg-slate-200 hover:text-slate-600"
+                           className="absolute right-2 top-1/2 -translate-y-1/2 flex h-8 w-8 items-center justify-center rounded-lg bg-transparent text-[#9DAEAD] transition-colors hover:text-[#00877F] hover:bg-transparent hover:text-slate-600"
                            title={searchTerm ? 'Limpiar búsqueda' : 'Lector silencioso activo'}
                         >
                            {searchTerm ? <X size={16} /> : <ScanBarcode size={16} />}
@@ -7965,6 +8184,38 @@ const POSInterface: React.FC<POSInterfaceProps> = ({
                            </span>
                         </button>
                      )}
+                     {/* Cliente y comprobante compactos, arriba a la derecha */}
+                     <div className="flex shrink-0 items-center gap-1.5">
+                        {selectedCustomer ? (
+                           <div className="flex items-center gap-1.5 rounded-xl border border-[#DEE7E6] bg-white px-2 py-1 shadow-sm">
+                              <UserPlus size={14} className="text-[#00A7A0]" />
+                              <span className="max-w-[140px] truncate text-[11px] font-black text-[#132124]">{selectedCustomer.name}</span>
+                              {egoClubTierLabel && (
+                                 <span className={`text-[9px] font-black uppercase tracking-wide px-1.5 py-0.5 rounded border ${getTierBadgeClass(selectedCustomer.tier)}`}>
+                                    {egoClubTierLabel}
+                                 </span>
+                              )}
+                              <button
+                                 type="button"
+                                 onClick={() => onSelectCustomer(null)}
+                                 title="Quitar cliente del ticket"
+                                 className="rounded p-0.5 text-[#9DAEAD] transition-colors hover:text-[#C0392B]"
+                              >
+                                 <X size={12} />
+                              </button>
+                           </div>
+                        ) : (
+                           <button
+                              type="button"
+                              onClick={onOpenCustomers}
+                              title="Asignar cliente al ticket"
+                              className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-dashed border-[#C9D8D7] bg-white px-2.5 text-[10px] font-black uppercase tracking-wide text-[#6C7F80] transition-colors hover:border-[#00A7A0] hover:text-[#00877F]"
+                           >
+                              <UserPlus size={14} /> Cliente
+                           </button>
+                        )}
+                     </div>
+
                      <button
                         onClick={() => setRightSidebarTab('CART')}
                         aria-label={`Abrir carrito${cartQuantity > 0 ? ` con ${cartQuantity} artículos` : ''}`}
@@ -7990,6 +8241,9 @@ const POSInterface: React.FC<POSInterfaceProps> = ({
                            </span>
                         )}
                      </button>
+                     {/* Igual que en móvil: en supermercado el dock ya ofrece todas
+                         las acciones, este botón repetía el mismo panel. */}
+                     {!isRetailMode && (
                      <button
                         onClick={() => setRightSidebarTab('ACTIONS')}
                         aria-label="Abrir acciones rápidas"
@@ -8010,6 +8264,7 @@ const POSInterface: React.FC<POSInterfaceProps> = ({
                            <Layers size={18} strokeWidth={2.3} />
                         </span>
                      </button>
+                     )}
                      {!isKioskMode && <OrderServiceTypeButton value={effectiveOrderServiceType} onClick={() => handleGridAction('TAKEOUT')} />}
                   </div>
                </div>
@@ -8077,6 +8332,11 @@ const POSInterface: React.FC<POSInterfaceProps> = ({
                         <div className="flex-1 min-w-0">
                            <div className="flex items-center gap-2">
                               <p className="font-bold text-gray-800 truncate">{selectedCustomer.name}</p>
+                              {egoClubTierLabel && (
+                                 <span className={`text-[9px] font-black uppercase tracking-wide px-1.5 py-0.5 rounded border ${getTierBadgeClass(selectedCustomer.tier)}`}>
+                                    {egoClubTierLabel}
+                                 </span>
+                              )}
                               {/* Save to contact feature temporarily disabled due to missing prop plumbing */}
                            </div>
                            <div className="flex items-center gap-2 flex-wrap">
@@ -8097,6 +8357,18 @@ const POSInterface: React.FC<POSInterfaceProps> = ({
                            </div>
                         </div>
                         <div className="flex items-center gap-2">
+                           {isEgoClubEnabled(config) && loyaltyRedeemChannel.enabled && (selectedCustomer.loyaltyPoints || 0) > 0 && (
+                              <button
+                                 onClick={() => setShowLoyaltyRedeemModal(true)}
+                                 title="Canjear puntos EGO Club"
+                                 className="px-2.5 py-1.5 rounded-lg border border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100 transition-all flex items-center gap-1"
+                              >
+                                 <Coins size={14} />
+                                 <span className="text-[10px] font-black uppercase">
+                                    {(selectedCustomer.loyaltyPoints || 0).toLocaleString('es-DO')} pts
+                                 </span>
+                              </button>
+                           )}
                            <button
                               onClick={openRecoverReservationForSelectedCustomer}
                               title="Ver reservas activas del cliente"
@@ -8111,7 +8383,9 @@ const POSInterface: React.FC<POSInterfaceProps> = ({
                         </div>
                      </div>
                   ) : (
+                     isMobile && (
                      <button onClick={onOpenCustomers} className="w-full flex items-center justify-between p-3 bg-white border-2 border-dashed border-gray-300 rounded-xl text-gray-400 hover:text-blue-500 group"><div className="flex items-center gap-2"><UserPlus size={18} /><span className="text-xs font-bold uppercase">Asignar Cliente</span></div><ChevronRight size={16} /></button>
+                     )
                   )
                }
 
@@ -8133,7 +8407,7 @@ const POSInterface: React.FC<POSInterfaceProps> = ({
                   </div>
                )}
 
-               {!isOrderTakerMode && !isFiscalModeDisabled && (
+               {isMobile && !isOrderTakerMode && !isFiscalModeDisabled && (
                   <div className={`mt-1 flex items-center gap-2 px-3 py-1.5 rounded-lg border text-[10px] font-bold uppercase ${canCheckoutWithFiscalPolicy ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : 'bg-red-50 text-red-600 border-red-100 animate-pulse'}`}>
                      <Landmark size={12} />
                      <span>Status Fiscal: {`${fiscalStatus.type} ${fiscalStatus.hasNCF ? (fiscalStatus.isTerminalBlock ? 'Bloque Terminal' : (fiscalStatus.isUsingPool ? 'Reservado en Pool' : 'Lote Global Activo')) : 'Agotado'}`}</span>
@@ -8158,6 +8432,11 @@ const POSInterface: React.FC<POSInterfaceProps> = ({
                   currencySymbol={baseCurrency.symbol}
                   lastAddedCartId={lastAddedCartId}
                   onRemoveItem={(cartId) => updateCartItem(null, cartId)}
+                  onDuplicateItem={duplicateCartLine}
+                  onLineDiscount={(cartId) => setLineDiscountCartId(cartId)}
+                  onAssignSeller={(cartId) => setSellerPickerCartId(cartId)}
+                  onChangeQuantity={changeCartLineQuantity}
+                  resolveSellerName={resolveSalespersonLabel}
                   containerStyle={isMobile ? bottomAwareScrollStyle : undefined}
                />
             ) : (
@@ -8530,6 +8809,10 @@ const POSInterface: React.FC<POSInterfaceProps> = ({
                            total={cartTotal}
                            units={cart.reduce((acc, item) => acc + item.quantity, 0)}
                            points={pointsEarned}
+                           pendingSync={pendingLoyaltyOps}
+                           erpReachable={erpReachable}
+                           fiscalLabel={isOrderTakerMode || isFiscalModeDisabled ? null : fiscalStatus.type}
+                           onOpenSync={() => setShowLoyaltySyncPanel(true)}
                         />
                         <div className="supermarket-checkout">
                            <ActionGrid
@@ -8815,6 +9098,7 @@ const POSInterface: React.FC<POSInterfaceProps> = ({
                      <div className="text-right">
                         <span className="text-[10px] font-bold text-gray-400 uppercase block">Subtotal: {baseCurrency.symbol}{cartSubtotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                         {discountAmount > 0 && <span className="text-[10px] font-bold text-red-500 uppercase block">Desc: -{baseCurrency.symbol}{discountAmount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>}
+                        {loyaltyRedemptionApplied > 0 && <span className="text-[10px] font-bold text-emerald-600 uppercase block">Canje EGO: -{baseCurrency.symbol}{loyaltyRedemptionApplied.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>}
                      </div>
                   </div>
                   <div className="flex items-center gap-4">
@@ -8870,6 +9154,43 @@ const POSInterface: React.FC<POSInterfaceProps> = ({
             }
          }} onConfirm={handlePaymentConfirm} themeColor={config.themeColor} customer={effectiveSelectedCustomer} isDelinquent={isDelinquent} users={users} roles={roles} isMaster={isMaster} currentUser={currentUser} isRestaurantMode={isRestaurantMode} isInstallmentPayment={isIntermediateFractionPayment} />}
          {showLoyaltyModal && <LoyaltyScanModal onClose={() => setShowLoyaltyModal(false)} onScan={handleLoyaltyScan} />}
+         {showLoyaltyRedeemModal && selectedCustomer && (
+            <LoyaltyRedeemModal
+               config={config}
+               customer={selectedCustomer}
+               ticketTotal={cartTotal}
+               currencySymbol={baseCurrency.symbol}
+               availablePoints={selectedCustomer.loyaltyPoints ?? currentPoints}
+               onClose={() => setShowLoyaltyRedeemModal(false)}
+               onRedeemed={(result) => {
+                  // El saldo mostrado pasa a ser el que devolvió el ERP: no se descuenta localmente.
+                  setLoyaltyRedemption({
+                     id: buildRedemptionId({ customerId: selectedCustomer.id, points: result.points }),
+                     customerId: selectedCustomer.id,
+                     points: result.points,
+                     value: result.value,
+                     redeemRate: config.loyalty?.redeemRate || 0,
+                     reason: result.reason,
+                     balanceAfter: result.balanceAfter,
+                     redeemedAt: new Date().toISOString(),
+                     terminalId: activeTerminalId,
+                  });
+                  // El ERP es la autoridad del saldo: se refleja en la colección de
+                  // clientes para que la tarjeta y el próximo canje no muestren el
+                  // saldo anterior hasta el próximo sync.
+                  if (typeof result.balanceAfter === 'number' && onUpdateCustomers) {
+                     const balance = Math.max(0, Math.floor(result.balanceAfter));
+                     onUpdateCustomers((list) => list.map(customer => (
+                        customer.id === selectedCustomer.id
+                           ? { ...customer, loyaltyPoints: balance }
+                           : customer
+                     )));
+                     onSelectCustomer({ ...selectedCustomer, loyaltyPoints: balance });
+                  }
+                  setSuccessToast(`Canje EGO Club: ${result.points.toLocaleString('es-DO')} pts`);
+               }}
+            />
+         )}
          {editingItem && <CartItemOptionsModal
             item={editingItem}
             config={config}
@@ -8915,6 +9236,138 @@ const POSInterface: React.FC<POSInterfaceProps> = ({
                returnToTicketView();
             }} />
          }
+
+         {/* Descuento acotado a una línea del ticket denso */}
+         {lineDiscountCartId && (() => {
+            const line = processedCart.find(item => item.cartId === lineDiscountCartId);
+            if (!line) return null;
+            const lineSubtotal = line.price * line.quantity;
+            return (
+               <GlobalDiscountModal
+                  currentSubtotal={lineSubtotal}
+                  currencySymbol={baseCurrency.symbol}
+                  initialValue={String(line.discountRate || '')}
+                  initialType="PERCENT"
+                  themeColor={config.themeColor}
+                  onClose={() => setLineDiscountCartId(null)}
+                  onConfirm={async (val, type) => {
+                     const numVal = parseFloat(val) || 0;
+                     const authorized = await requestApproval({
+                        permission: 'POS_DISCOUNT',
+                        actionDescription: `Aplicar descuento a ${line.name}`,
+                        context: {
+                           newValue: type === 'PERCENT'
+                              ? numVal
+                              : (lineSubtotal > 0 ? (numVal / lineSubtotal) * 100 : 0),
+                           originalValue: lineSubtotal,
+                        }
+                     });
+                     if (!authorized) return;
+
+                     const target = processedCart.find(item => item.cartId === lineDiscountCartId);
+                     if (!target) {
+                        setLineDiscountCartId(null);
+                        return;
+                     }
+                     const quantity = Math.abs(target.quantity) || 1;
+                     const subtotal = target.price * quantity;
+                     const discountTotal = type === 'PERCENT'
+                        ? subtotal * (Math.min(100, Math.max(0, numVal)) / 100)
+                        : Math.min(numVal, subtotal);
+                     const nextUnitPrice = Math.max(0, (subtotal - discountTotal) / quantity);
+
+                     await updateCartItem({
+                        ...target,
+                        originalPrice: target.originalPrice ?? target.price,
+                        price: Number(nextUnitPrice.toFixed(2)),
+                        discountRate: type === 'PERCENT' ? Math.min(100, Math.max(0, numVal)) : undefined,
+                        discountAmount: Number(discountTotal.toFixed(2)),
+                        adjustmentSource: 'MANUAL_DISCOUNT',
+                     });
+                     setLineDiscountCartId(null);
+                  }}
+               />
+            );
+         })()}
+
+         {/* Vendedor por línea */}
+         {sellerPickerCartId && (() => {
+            const line = processedCart.find(item => item.cartId === sellerPickerCartId);
+            if (!line) return null;
+            return (
+               <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
+                  <div className="w-full max-w-md overflow-hidden rounded-2xl bg-white shadow-2xl">
+                     <div className="flex items-start justify-between border-b border-[#E1E9E8] px-5 py-4">
+                        <div>
+                           <p className="text-[10px] font-black uppercase tracking-[0.18em] text-[#9DAEAD]">Asignar vendedor</p>
+                           <p className="mt-1 text-sm font-black text-[#132124]">{line.name}</p>
+                        </div>
+                        <button onClick={() => setSellerPickerCartId(null)} className="rounded-lg p-1.5 text-[#9DAEAD] hover:bg-[#F4F7F6]">
+                           <X size={18} />
+                        </button>
+                     </div>
+                     <div className="max-h-[52vh] overflow-y-auto p-3">
+                        {salesUsers.length === 0 && (
+                           <p className="px-2 py-6 text-center text-xs font-semibold text-[#6C7F80]">
+                              El ERP no ha enviado vendedores para esta caja.
+                           </p>
+                        )}
+                        {salesUsers.map(seller => {
+                           const active = line.salespersonId === seller.id;
+                           return (
+                              <button
+                                 key={seller.id}
+                                 type="button"
+                                 onClick={() => void assignSellerToCartLine(line.cartId!, seller.id)}
+                                 className={`mb-1 flex w-full items-center justify-between rounded-xl px-3 py-2.5 text-left transition-colors ${active ? 'bg-[#E7F7F6] text-[#00877F]' : 'hover:bg-[#F4F7F6] text-[#1B3034]'}`}
+                              >
+                                 <span className="text-sm font-bold">{seller.name}</span>
+                                 {active && <CheckCircle2 size={16} />}
+                              </button>
+                           );
+                        })}
+                     </div>
+                     {line.salespersonId && (
+                        <div className="border-t border-[#E1E9E8] p-3">
+                           <button
+                              type="button"
+                              onClick={() => void assignSellerToCartLine(line.cartId!, null)}
+                              className="w-full rounded-xl border border-[#F2DCD8] bg-[#FEF6F5] px-3 py-2 text-xs font-bold uppercase tracking-wide text-[#C0392B]"
+                           >
+                              Quitar vendedor
+                           </button>
+                        </div>
+                     )}
+                  </div>
+               </div>
+            );
+         })()}
+
+         {showCardReader && (
+            <CardReaderModal
+               customers={customers}
+               onClose={() => setShowCardReader(false)}
+               onCustomer={(customer) => {
+                  // Todo se resuelve en el lector: se asigna el socio y se cierra.
+                  // Antes se abría el modal antiguo de 'Tarjeta de Lealtad', que
+                  // volvía a pedir el código y no lo encontraba.
+                  onSelectCustomer(customer);
+                  setShowCardReader(false);
+                  const points = Number(customer.loyaltyPoints || 0);
+                  setSuccessToast(points > 0
+                     ? `${customer.name} · ${points.toLocaleString('es-DO')} pts EGO Club`
+                     : `${customer.name} asignado al ticket`);
+               }}
+               onUnknown={() => undefined}
+            />
+         )}
+
+         {showLoyaltySyncPanel && (
+            <LoyaltySyncPanel
+               onClose={() => setShowLoyaltySyncPanel(false)}
+               onFlushed={() => { void countPendingLoyaltyOperations().then(setPendingLoyaltyOps).catch(() => undefined); }}
+            />
+         )}
 
          <SupervisorModal {...supervisorModalProps} users={users} />
 

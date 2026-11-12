@@ -13,6 +13,7 @@ import android.os.Debug;
 import android.os.PowerManager;
 import android.os.Process;
 import android.os.StatFs;
+import android.provider.Settings;
 import android.util.Log;
 import android.util.DisplayMetrics;
 import android.view.View;
@@ -28,6 +29,7 @@ import android.webkit.WebView;
 import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
 
+import com.clicpos.cardnet.CardNetEcrPlugin;
 import com.clicpos.customerdisplay.AndroidCustomerDisplayBridge;
 import com.clicpos.nativeprinter.AndroidPrinterBridge;
 import com.getcapacitor.BridgeActivity;
@@ -53,6 +55,8 @@ public class MainActivity extends BridgeActivity {
                 + " savedState=" + (savedInstanceState != null)
                 + " launchedFromHistory=" + launchedFromHistory);
         if (BuildConfig.POS_DIAGNOSTICS) registerPlugin(PosDiagnosticSink.class);
+        // Transporte TCP del canal ECR de CardNET (terminal Ethernet en el puerto 7060).
+        registerPlugin(CardNetEcrPlugin.class);
         super.onCreate(savedInstanceState);
         enforcePosWindowPolicy();
 
@@ -168,6 +172,24 @@ public class MainActivity extends BridgeActivity {
         @JavascriptInterface
         public String getLaunchContext() {
             return activityRecreated ? "activity_recreated" : "fresh_start";
+        }
+
+        /**
+         * Identificador estable del dispositivo físico (Settings.Secure.ANDROID_ID).
+         * Sobrevive a desinstalación/reinstalación para el mismo par (dispositivo,
+         * llave de firma, usuario): es lo que permite reconocer que "es la misma caja"
+         * y re-vincular sin pasar por reautorización manual.
+         */
+        @JavascriptInterface
+        public String getStableDeviceId() {
+            try {
+                String androidId = Settings.Secure.getString(
+                        getContentResolver(), Settings.Secure.ANDROID_ID);
+                return androidId == null ? "" : androidId;
+            } catch (Exception error) {
+                Log.w(TAG, "Stable device id unavailable", error);
+                return "";
+            }
         }
 
         @JavascriptInterface

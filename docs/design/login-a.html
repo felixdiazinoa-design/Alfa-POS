@@ -1,0 +1,186 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>ALFA-POS · Login A</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  :root{
+    --ink:#132124; --ink-2:#1B3034; --teal:#00A7A0; --teal-2:#00877F;
+    --lime:#B8E336; --paper:#F4F7F6; --line:#DEE7E6; --muted:#6C7F80;
+  }
+  body{
+    width:1440px; height:900px; overflow:hidden;
+    font-family:"Sora","Inter",-apple-system,"Helvetica Neue",Arial,sans-serif;
+    background:var(--paper); display:flex;
+  }
+  /* ---------- panel de marca ---------- */
+  .brand{
+    width:600px; background:var(--ink); position:relative; overflow:hidden;
+    padding:56px 56px 44px; display:flex; flex-direction:column; color:var(--paper);
+  }
+  .brand::before{ /* retícula sutil */
+    content:""; position:absolute; inset:0;
+    background-image:linear-gradient(rgba(244,247,246,.045) 1px,transparent 1px),
+                     linear-gradient(90deg,rgba(244,247,246,.045) 1px,transparent 1px);
+    background-size:56px 56px;
+  }
+  .glow{ position:absolute; border-radius:50%; filter:blur(2px); opacity:.9; }
+  .glow.t{ width:520px; height:520px; right:-190px; top:-160px;
+           background:radial-gradient(circle,rgba(0,167,160,.55),transparent 62%); }
+  .glow.l{ width:380px; height:380px; left:-130px; bottom:-150px;
+           background:radial-gradient(circle,rgba(184,227,54,.30),transparent 65%); }
+  .brand > *{ position:relative; }
+  .mark{ width:76px; height:76px; margin-bottom:26px; }
+  .word{ font-size:46px; font-weight:800; letter-spacing:-1.6px; line-height:1; }
+  .word span{ color:var(--teal); }
+  .tag{ margin-top:12px; font-size:15px; color:rgba(244,247,246,.62); letter-spacing:.3px; }
+  .brand{ justify-content:flex-start; }
+  .brand .top{ position:absolute; left:56px; right:56px; top:56px; }
+  .brand .bottom{ position:absolute; left:56px; right:56px; bottom:44px; }
+  .store{
+    display:inline-flex; align-items:center; gap:12px; align-self:flex-start;
+    background:rgba(244,247,246,.07); border:1px solid rgba(244,247,246,.12);
+    border-radius:14px; padding:12px 18px; font-size:14px; font-weight:600;
+  }
+  .dot{ width:9px; height:9px; border-radius:50%; background:var(--lime);
+        box-shadow:0 0 0 4px rgba(184,227,54,.18); }
+  .meta{ margin-top:28px; display:flex; gap:28px; font-size:11.5px; letter-spacing:.8px;
+         text-transform:uppercase; color:rgba(244,247,246,.42); }
+  .meta b{ display:block; margin-top:6px; font-size:13px; letter-spacing:.4px;
+           text-transform:none; color:rgba(244,247,246,.85); font-weight:600; }
+
+  /* ---------- panel de acceso ---------- */
+  .panel{ flex:1; display:flex; flex-direction:column; align-items:center;
+          justify-content:center; padding:48px 72px; }
+  .panel h1{ font-size:30px; font-weight:800; letter-spacing:-.8px; color:var(--ink); }
+  .panel p.sub{ margin-top:8px; font-size:14px; color:var(--muted); }
+
+  .who{ display:flex; gap:14px; margin-top:30px; }
+  .who button{
+    width:196px; border:1.5px solid var(--line); background:#fff; border-radius:18px;
+    padding:20px 18px; text-align:left; cursor:pointer; font-family:inherit;
+    display:flex; flex-direction:column; gap:12px; transition:.18s;
+  }
+  .who button .ico{
+    width:44px; height:44px; border-radius:13px; background:#EDF2F1;
+    display:grid; place-items:center; color:var(--ink-2);
+  }
+  .who button .nm{ font-size:16px; font-weight:700; color:var(--ink); }
+  .who button .rl{ font-size:12px; color:var(--muted); margin-top:2px; }
+  .who button.on{
+    border-color:var(--teal); background:#F0FBFA;
+    box-shadow:0 10px 30px -18px rgba(0,167,160,.85);
+  }
+  .who button.on .ico{ background:var(--teal); color:#fff; }
+  .who button.on .nm{ color:var(--teal-2); }
+
+  .pins{ display:flex; gap:14px; margin:34px 0 24px; }
+  .pins i{ width:16px; height:16px; border-radius:50%; background:#CFDBDA; }
+  .pins i.f{ background:var(--ink); }
+  .pins i.cur{ background:#fff; border:2.5px solid var(--teal); }
+
+  .pad{ display:grid; grid-template-columns:repeat(3,104px); gap:16px; }
+  .pad button{
+    height:74px; border-radius:18px; border:1px solid var(--line); background:#fff;
+    font-family:inherit; font-size:27px; font-weight:700; color:var(--ink);
+    cursor:pointer; display:grid; place-items:center; transition:.14s;
+    box-shadow:0 2px 0 rgba(19,33,36,.04);
+  }
+  .pad button:hover{ border-color:#C3D2D1; transform:translateY(-1px); }
+  .pad button.fn{ background:transparent; border-color:transparent; font-size:16px; color:var(--muted); }
+  .pad button.del{ color:#C0392B; }
+
+  .hint{ margin-top:26px; font-size:13px; color:var(--muted); display:flex; align-items:center; gap:10px; }
+  .hint .pill{
+    display:inline-flex; align-items:center; gap:8px; padding:8px 14px; border-radius:999px;
+    background:#fff; border:1px solid var(--line); font-size:12px; font-weight:600; color:var(--ink-2);
+  }
+</style>
+</head>
+<body>
+  <aside class="brand">
+    <div class="glow t"></div><div class="glow l"></div>
+    <div class="top">
+    <svg class="mark" viewBox="0 0 64 64" aria-label="ALFA">
+      <path fill="#F4F7F6" d="M7 52 26.5 12 35 29.2 23.8 52Z"/>
+      <path fill="#00A7A0" d="M29.8 8H43l14 29.3-16.4-5.8Z"/>
+      <path fill="#B8E336" d="m38.8 35 16.8 6L61 52H46.7Z"/>
+      <path fill="#132124" d="m28.4 33.4 6.2 12.7L31.7 52h-8Z"/>
+    </svg>
+    <div class="word">ALFA<span>-POS</span></div>
+    <div class="tag">Punto de venta · Retail Suite</div>
+
+    </div>
+    <div class="bottom">
+
+    <div class="store"><span class="dot"></span> Supermercado · Caja 01</div>
+    <div class="meta">
+      <div>Terminal<b>POS-001</b></div>
+      <div>Versión<b>1.1.375</b></div>
+      <div>Estado<b>En línea</b></div>
+    </div>
+    </div>
+  </aside>
+
+  <main class="panel">
+    <h1>Acceso de sistema</h1>
+    <p class="sub">Identifícate para abrir la caja</p>
+
+    <div class="who">
+      <button class="on">
+        <span class="ico">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
+            <circle cx="12" cy="8" r="3.6"/><path d="M5 20c0-3.6 3.1-5.6 7-5.6s7 2 7 5.6"/>
+          </svg>
+        </span>
+        <span>
+          <span class="nm">Administrador</span>
+          <div class="rl">Acceso total</div>
+        </span>
+      </button>
+      <button>
+        <span class="ico">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
+            <circle cx="12" cy="8" r="3.6"/><path d="M5 20c0-3.6 3.1-5.6 7-5.6s7 2 7 5.6"/>
+          </svg>
+        </span>
+        <span>
+          <span class="nm">Cajero</span>
+          <div class="rl">Solo ventas</div>
+        </span>
+      </button>
+    </div>
+
+    <div class="pins"><i class="f"></i><i class="f"></i><i class="cur"></i><i></i></div>
+
+    <div class="pad">
+      <button>1</button><button>2</button><button>3</button>
+      <button>4</button><button>5</button><button>6</button>
+      <button>7</button><button>8</button><button>9</button>
+      <button class="fn del">Limpiar</button><button>0</button>
+      <button class="fn">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
+          <path d="M20 6H9l-5 6 5 6h11a1 1 0 0 0 1-1V7a1 1 0 0 0-1-1Z"/><path d="m13 10 4 4m0-4-4 4"/>
+        </svg>
+      </button>
+    </div>
+
+    <div class="hint">
+      <span class="pill">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#00A7A0" stroke-width="1.9" stroke-linecap="round">
+          <path d="M12 4c3 0 5 2 5 5 0 4-5 9-5 9S7 13 7 9c0-3 2-5 5-5Z"/>
+        </svg>
+        Huella
+      </span>
+      <span class="pill">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#00A7A0" stroke-width="1.9" stroke-linecap="round">
+          <rect x="3" y="6" width="18" height="12" rx="2"/><path d="M3 10h18"/>
+        </svg>
+        Tarjeta
+      </span>
+      <span>o introduce tu PIN</span>
+    </div>
+  </main>
+</body>
+</html>

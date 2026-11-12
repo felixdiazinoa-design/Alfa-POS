@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>ALFA-POS · login (CSS real del componente)</title>
+<link rel="stylesheet" href="../../components/ModernLoginScreen.css?b=1793878071">
+<style>
+  html,body{margin:0;padding:0;width:1440px;height:900px;overflow:hidden;background:#F4F7F6}
+  .modern-login-header{display:flex;flex-direction:column;align-items:center;gap:.6rem;margin-bottom:1.8rem}
+  .modern-user-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:1rem}
+  .modern-user-avatar{width:56px;height:56px;border-radius:1rem;display:grid;place-items:center;margin:0 auto 0.6rem}
+  .modern-user-card{padding:1.4rem 1rem;text-align:center;cursor:pointer;font-family:inherit}
+  .modern-user-name{font-size:.95rem}
+  .modern-pin-section{display:flex;flex-direction:column;align-items:center;gap:1.4rem}
+  .modern-pin-display{display:flex;gap:.75rem}
+  .modern-pin-display i{width:14px;height:14px;border-radius:50%;background:#CFDBDA;display:block}
+  .modern-pin-display i.f{background:#132124}
+  .modern-pin-display i.cur{background:#fff;border:2.5px solid #00A7A0}
+  .modern-keypad{display:grid;grid-template-columns:repeat(3,96px);gap:1rem}
+  .modern-key{height:70px;font-size:1.5rem;font-family:inherit;cursor:pointer}
+  .modern-key.special{font-size:1rem}
+  .modern-biometrics-footer{display:flex;flex-direction:column;align-items:center;gap:.4rem;padding-top:1.4rem;border-top:1px solid #E1E9E8;width:100%}
+  .modern-biometrics-text{font-size:.78rem}
+  .modern-login-left,.modern-login-right{display:flex;flex-direction:column}
+</style>
+</head>
+<body>
+<div class="modern-login-container">
+  <aside class="modern-login-brand">
+    <div class="alfa-brand-top">
+      <svg class="alfa-brand-mark" viewBox="0 0 64 64">
+        <path fill="#F4F7F6" d="M7 52 26.5 12 35 29.2 23.8 52Z"/>
+        <path fill="#00A7A0" d="M29.8 8H43l14 29.3-16.4-5.8Z"/>
+        <path fill="#B8E336" d="m38.8 35 16.8 6L61 52H46.7Z"/>
+        <path fill="#132124" d="m28.4 33.4 6.2 12.7L31.7 52h-8Z"/>
+      </svg>
+      <div class="modern-login-brand-wordmark">
+        <span class="modern-login-brand-mark">ALFA</span><span class="modern-login-brand-pos">-POS</span>
+      </div>
+      <p class="alfa-brand-tag">Punto de venta · Retail Suite</p>
+    </div>
+    <div class="alfa-brand-bottom">
+      <div class="alfa-brand-store"><span class="alfa-brand-dot"></span>Supermercado</div>
+      <div class="alfa-brand-meta">
+        <div>Terminal<b>POS-001</b></div>
+        <div>Versión<b>1.1.375</b></div>
+        <div>Hora<b>08:44</b></div>
+      </div>
+    </div>
+  </aside>
+
+  <div class="modern-login-card">
+    <div class="modern-login-left">
+      <div class="modern-login-header">
+        <div class="modern-lock-icon-container">
+          <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="#00877F" stroke-width="1.8"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>
+        </div>
+        <p class="modern-login-subtitle">Supermercado</p>
+        <h1 class="modern-login-title">Acceso de Sistema</h1>
+      </div>
+      <div class="modern-user-grid">
+        <button class="modern-user-card active">
+          <div class="modern-user-avatar"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="8" r="3.6"/><path d="M5 20c0-3.6 3.1-5.6 7-5.6s7 2 7 5.6"/></svg></div>
+          <div class="modern-user-name">Administrador</div>
+        </button>
+        <button class="modern-user-card">
+          <div class="modern-user-avatar"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="8" r="3.6"/><path d="M5 20c0-3.6 3.1-5.6 7-5.6s7 2 7 5.6"/></svg></div>
+          <div class="modern-user-name">Cajero</div>
+        </button>
+      </div>
+    </div>
+
+    <div class="modern-login-right">
+      <div class="modern-pin-section">
+        <div class="modern-pin-display"><i class="f"></i><i class="f"></i><i class="cur"></i><i></i></div>
+        <div class="modern-keypad">
+          <button class="modern-key">1</button><button class="modern-key">2</button><button class="modern-key">3</button>
+          <button class="modern-key">4</button><button class="modern-key">5</button><button class="modern-key">6</button>
+          <button class="modern-key">7</button><button class="modern-key">8</button><button class="modern-key">9</button>
+          <button class="modern-key special">Limpiar</button><button class="modern-key">0</button>
+          <button class="modern-key special"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M20 6H9l-5 6 5 6h11a1 1 0 0 0 1-1V7a1 1 0 0 0-1-1Z"/><path d="m13 10 4 4m0-4-4 4"/></svg></button>
+        </div>
+        <div class="modern-biometrics-footer">
+          <p class="modern-biometrics-text">Escanear Tarjeta o Login con Huella</p>
+          <div class="mt-6" style="font-size:11px;color:#6C7F80;margin-top:1.2rem">Supermercado · POS-001</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+</body>
+</html>

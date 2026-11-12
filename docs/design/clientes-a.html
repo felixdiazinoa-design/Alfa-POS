@@ -1,0 +1,195 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>ALFA-POS · Clientes A</title>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  :root{
+    --ink:#132124;--teal:#00A7A0;--teal-2:#00877F;--lime:#B8E336;
+    --paper:#F4F7F6;--line:#E1E9E8;--muted:#6C7F80;--danger:#C0392B;
+  }
+  body{width:1440px;height:900px;overflow:hidden;display:flex;flex-direction:column;
+       font-family:"Sora","Inter",-apple-system,Arial,sans-serif;background:var(--paper);color:var(--ink);}
+
+  /* barra superior */
+  header{height:64px;flex:0 0 64px;display:flex;align-items:center;gap:14px;
+         padding:0 22px;background:#fff;border-bottom:1px solid var(--line);}
+  .back{width:34px;height:34px;border-radius:10px;border:1px solid var(--line);display:grid;
+        place-items:center;color:var(--muted);}
+  h1{font-size:16px;font-weight:800;letter-spacing:-.3px;display:flex;align-items:center;gap:9px}
+  h1 svg{color:var(--teal)}
+  .actions{margin-left:auto;display:flex;align-items:center;gap:10px}
+  /* botones discretos: 34 px de alto, 13 px, borde fino */
+  .btn{height:34px;padding:0 13px;border-radius:10px;border:1px solid var(--line);background:#fff;
+       font-family:inherit;font-size:13px;font-weight:700;color:#2A3F42;display:inline-flex;
+       align-items:center;gap:7px;cursor:pointer;transition:.15s}
+  .btn:hover{border-color:#BFD2D0;background:#FBFDFC}
+  .btn.primary{background:var(--teal);border-color:var(--teal);color:#fff;
+               box-shadow:0 10px 22px -16px rgba(0,167,160,.9)}
+  .btn.primary:hover{background:var(--teal-2);border-color:var(--teal-2)}
+  .btn.ghost{border-color:transparent;color:var(--muted)}
+  .btn.ghost:hover{background:#EDF2F1;color:var(--ink)}
+  .btn svg{opacity:.9}
+
+  /* cuerpo */
+  .body{flex:1;display:flex;min-height:0}
+  aside{width:360px;flex:0 0 360px;border-right:1px solid var(--line);background:#fff;
+        display:flex;flex-direction:column;min-height:0}
+  .search{padding:16px 18px 10px}
+  .search div{height:40px;border-radius:11px;border:1px solid var(--line);background:var(--paper);
+              display:flex;align-items:center;gap:9px;padding:0 12px;color:#93A5A4;font-size:13px}
+  .filters{display:flex;gap:7px;padding:0 18px 12px}
+  .filters span{height:26px;padding:0 11px;border-radius:8px;font-size:10.5px;font-weight:800;
+                letter-spacing:.06em;text-transform:uppercase;display:inline-flex;align-items:center;
+                border:1px solid var(--line);color:var(--muted)}
+  .filters span.on{background:var(--ink);border-color:var(--ink);color:#fff}
+  .list{flex:1;overflow:hidden;border-top:1px solid var(--line)}
+  .row{display:flex;align-items:center;gap:11px;padding:12px 18px;border-bottom:1px solid #F1F5F4}
+  .row.on{background:#EFF9F8;border-left:3px solid var(--teal);padding-left:15px}
+  .av{width:34px;height:34px;border-radius:10px;background:#EDF2F1;color:#5E7B7A;display:grid;
+      place-items:center;font-weight:800;font-size:13px}
+  .row.on .av{background:var(--teal);color:#fff}
+  .row b{display:block;font-size:13px;font-weight:700}
+  .row span{font-size:11px;color:var(--muted)}
+
+  /* ficha */
+  main{flex:1;padding:22px 26px;overflow:hidden}
+  .card{background:#fff;border:1px solid var(--line);border-radius:18px;padding:22px}
+  .card-top{display:flex;align-items:flex-start;gap:16px}
+  .avatar{width:64px;height:64px;border-radius:16px;background:var(--ink);color:#fff;display:grid;
+          place-items:center;font-size:24px;font-weight:800}
+  .who b{font-size:20px;font-weight:800;letter-spacing:-.5px}
+  .badges{display:flex;gap:7px;margin-top:6px;flex-wrap:wrap}
+  .tag{font-size:10px;font-weight:800;letter-spacing:.07em;text-transform:uppercase;
+       border-radius:6px;padding:3px 7px;border:1px solid var(--line);color:var(--muted)}
+  .tag.ego{background:#E7F7F6;border-color:#CDEBE8;color:var(--teal-2)}
+  .contact{margin-top:7px;font-size:12px;color:var(--muted);line-height:1.6}
+  /* acciones de la ficha: una primaria, el resto discretas */
+  .row-actions{margin-left:auto;display:flex;align-items:center;gap:9px}
+  .metrics{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-top:18px}
+  .metric{border:1px solid var(--line);border-radius:11px;padding:9px 12px}
+  .metric p{font-size:9px;font-weight:800;letter-spacing:.13em;text-transform:uppercase;color:#9DAEAD}
+  .metric b{display:block;margin-top:3px;font-size:15px;font-variant-numeric:tabular-nums}
+  .metric.neto{background:#F5FBEA;border-color:#DCEBD0}
+  .metric.neto b{color:#4C6B12}
+  .tabs{display:flex;gap:26px;margin-top:20px;border-bottom:1px solid var(--line);padding:0 4px}
+  .tabs button{background:none;border:none;font-family:inherit;font-size:13px;font-weight:700;
+               color:var(--muted);padding:0 0 11px;display:flex;align-items:center;gap:7px;cursor:pointer}
+  .tabs button.on{color:var(--teal-2);box-shadow:inset 0 -2px 0 var(--teal)}
+  .empty{margin-top:60px;text-align:center;color:#B9C7C6;font-size:13px}
+  .empty svg{margin-bottom:10px}
+</style>
+</head>
+<body>
+  <header>
+    <div class="back">
+      <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M19 12H5M11 18l-6-6 6-6"/></svg>
+    </div>
+    <h1>
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="9" cy="8" r="3.2"/><path d="M3 19c0-3 2.7-4.7 6-4.7s6 1.7 6 4.7"/><path d="M16 5.5a3.2 3.2 0 0 1 0 6"/><path d="M18 14.6c2 .7 3 2.1 3 4.4"/></svg>
+      Directorio de Clientes
+    </h1>
+
+    <!-- Variante A: una primaria + secundarias discretas -->
+    <div class="actions">
+      <button class="btn">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 3l2.2 5.6 6 .5-4.6 3.9 1.4 5.9L12 15.7 7 18.9l1.4-5.9L3.8 9.1l6-.5Z"/></svg>
+        Alta EGO Club
+      </button>
+      <button class="btn primary">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M5 12l4.5 4.5L19 7"/></svg>
+        Asignar al Ticket
+      </button>
+      <button class="btn ghost">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+        Nuevo cliente
+      </button>
+    </div>
+  </header>
+
+  <div class="body">
+    <aside>
+      <div class="search">
+        <div>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+          Buscar cliente…
+        </div>
+      </div>
+      <div class="filters"><span class="on">Todos</span><span>VIP</span><span>Regular</span><span>Wholesale</span></div>
+      <div class="list">
+        <div class="row on">
+          <div class="av">Á</div>
+          <div><b>Ámbar Boutique SRL</b><span>809-555-0107 · B02</span></div>
+        </div>
+        <div class="row">
+          <div class="av">A</div>
+          <div><b>Aurora Moda SRL</b><span>809-555-0101 · B02</span></div>
+        </div>
+        <div class="row">
+          <div class="av">B</div>
+          <div><b>Brisa Accesorios SRL</b><span>809-555-0106 · B02</span></div>
+        </div>
+        <div class="row">
+          <div class="av">C</div>
+          <div><b>Caribe Fashion Group SRL</b><span>809-555-0102 · B02</span></div>
+        </div>
+        <div class="row">
+          <div class="av">C</div>
+          <div><b>Cibao Calzados SRL</b><span>809-555-0105 · B02</span></div>
+        </div>
+      </div>
+    </aside>
+
+    <main>
+      <div class="card">
+        <div class="card-top">
+          <div class="avatar">Á</div>
+          <div class="who">
+            <b>Ámbar Boutique SRL</b>
+            <div class="badges"><span class="tag ego">EGO Club</span><span class="tag">Consumo B02</span><span class="tag">132000007</span></div>
+            <div class="contact">809-555-0107 · contacto@ambarboutique.example</div>
+          </div>
+          <!-- acciones de la ficha: una primaria y el resto muy discretas -->
+          <div class="row-actions">
+            <button class="btn">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="6" width="18" height="12" rx="2"/><path d="M3 10h18"/></svg>
+              Tarjeta EGO Club
+            </button>
+            <button class="btn primary">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M5 12l4.5 4.5L19 7"/></svg>
+              Asignar al Ticket
+            </button>
+            <button class="btn ghost" title="WhatsApp">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 12a9 9 0 1 1-3.2-6.9"/><path d="M21 3v6h-6"/></svg>
+            </button>
+            <button class="btn ghost" title="Editar">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 20h4L20 8l-4-4L4 16Z"/></svg>
+            </button>
+          </div>
+        </div>
+
+        <div class="metrics">
+          <div class="metric"><p>Gastado</p><b>RD$0.00</b></div>
+          <div class="metric"><p>Deuda</p><b>RD$0.00</b></div>
+          <div class="metric"><p>A favor</p><b>RD$0.00</b></div>
+          <div class="metric neto"><p>Neto</p><b>RD$0.00</b></div>
+        </div>
+
+        <div class="tabs">
+          <button class="on"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg> Historial</button>
+          <button><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="6" width="18" height="13" rx="2"/><path d="M16 12h2"/></svg> Billetera</button>
+          <button><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3l2.2 5.6 6 .5-4.6 3.9 1.4 5.9L12 15.7 7 18.9l1.4-5.9L3.8 9.1l6-.5Z"/></svg> Lealtad</button>
+          <button><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="6" width="18" height="12" rx="2"/><path d="M7 12h4"/></svg> Crédito</button>
+          <button><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M8 3v4M16 3v4M3 11h18"/></svg> Agenda</button>
+        </div>
+
+        <div class="empty">
+          <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M4 8h16v11a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2Z"/><path d="M9 8V6a3 3 0 0 1 6 0v2"/></svg>
+          <div>Sin historial de compras</div>
+        </div>
+      </div>
+    </main>
+  </div>
+</body>
+</html>

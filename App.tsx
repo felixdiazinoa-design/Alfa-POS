@@ -103,6 +103,8 @@ import { buildCloseTaxSummary } from './utils/closeReceiptSummary';
 import { buildZReportPaymentMethodSummary } from './utils/zReportPaymentSummary';
 import { applyPromotions, hasProductPromotion } from './utils/promotionEngine';
 import { calculateTransactionTaxSummary } from './utils/taxSummary';
+import { mapCustomersFromErp } from './utils/egoClub';
+import { flushLoyaltyOutbox, enqueueSaleDocumentReport } from './services/loyalty/LoyaltyService';
 import { calculateTransactionFiscalSummary } from './utils/fiscalBreakdown';
 import { extractTerminalOperationalDocumentState } from './utils/terminalConfigSnapshot';
 import { mergeDocumentSeriesCollection, resolveDocumentAssignmentId } from './utils/documentSeriesIdentity';
@@ -338,6 +340,10 @@ import {
 import { getFiscalDocumentStatus, issueFiscalDocument } from './services/fiscal/fiscalService';
 import { azulMcmService } from './services/payments/AzulMcmService';
 import { ingenicoAzulWebApiService } from './services/payments/IngenicoAzulWebApiService';
+import {
+  cardNetEcrService,
+  generateCardNetInvoiceTicket,
+} from './services/payments/CardNetEcrService';
 import { couponService } from './utils/couponService';
 
 type ReceivableRepairSummary = {
@@ -5798,6 +5804,36 @@ const AppContent: React.FC = () => {
     };
   }, [flushOfflinePrintQueue, isDataLoaded]);
 
+  // Cola de fidelización EGO Club: altas de socio y devengos pendientes se reintentan
+  // al arrancar, al recuperar conexión y periódicamente. Nunca bloquea el cobro.
+  useEffect(() => {
+    if (!isDataLoaded) return;
+
+    let cancelled = false;
+    const flush = () => {
+      if (cancelled) return;
+      flushLoyaltyOutbox().catch(error => console.warn('[EGO CLUB] flush de cola falló:', error));
+    };
+
+    const handleVisibility = () => {
+      if (document.hidden) return;
+      flush();
+    };
+
+    const intervalId = window.setInterval(flush, 60000);
+    window.addEventListener('online', flush);
+    document.addEventListener('visibilitychange', handleVisibility);
+
+    flush();
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(intervalId);
+      window.removeEventListener('online', flush);
+      document.removeEventListener('visibilitychange', handleVisibility);
+    };
+  }, [isDataLoaded]);
+
   useEffect(() => {
     const handleAutoPrint = async (event: Event) => {
       const detail = (event as CustomEvent<any>)?.detail || {};
@@ -6547,7 +6583,8 @@ const AppContent: React.FC = () => {
           // collection so the bootstrap fallback cannot overwrite a synced
           // customer list with an empty array.
           const persistedCustomers = await db.get('customers') as Customer[];
-          setCustomers(Array.isArray(persistedCustomers) ? persistedCustomers : (data.customers || []));
+          // El ERP entrega loyalty_points/tier en snake_case; se normaliza en la ingesta (T3).
+          setCustomers(mapCustomersFromErp(Array.isArray(persistedCustomers) ? persistedCustomers : (data.customers || [])));
           setTransactions(data.transactions || []);
           const startupProducts = Array.isArray(data.products) ? data.products : [];
           setProducts(startupProducts);
@@ -7235,7 +7272,7 @@ const AppContent: React.FC = () => {
             }
           }
           break;
-        case 'customers': setCustomers(freshData as Customer[]); break;
+        case 'customers': setCustomers(mapCustomersFromErp(freshData)); break;
         case 'suppliers': setSuppliers(freshData as Supplier[]); break;
         case 'users': setUsers(visiblePosUsersForRuntime(freshData)); break;
         case 'roles': setRoles(Array.isArray(freshData) ? freshData as RoleDefinition[] : DEFAULT_ROLES); break;
@@ -9672,6 +9709,16 @@ const AppContent: React.FC = () => {
     syncFiscalDocument(txn).catch(console.error);
     backgroundSyncManager.triggerSync().catch(console.error);
 
+    // EGO Club (T6): el documento de venta ya está registrado; se reporta al ERP para que
+    // devengue los puntos. Se encola una sola vez por documento y fuera del flujo de
+    // impresión, así que la venta no espera a la red ni se duplica al reintentar.
+    if (config.loyalty?.isEnabled && txn.customerId && txn.status === 'COMPLETED') {
+      void enqueueSaleDocumentReport({
+        documentId: txn.id,
+        reference: txn.displayId || txn.id,
+      }).catch(error => console.warn('[EGO CLUB] no se pudo encolar el devengo:', error));
+    }
+
     const affectedPairs = new Set<string>();
     ledgerEntriesForCommit.forEach(entry => affectedPairs.add(`${entry.productId}|${entry.warehouseId}`));
 
@@ -11586,6 +11633,7 @@ const AppContent: React.FC = () => {
             customers={customers}
             products={products}
             onUpdateProducts={setProducts}
+            onUpdateCustomers={setCustomers}
             warehouses={warehouses}
             cart={cart}
             transactions={transactions}
@@ -12606,9 +12654,15 @@ const AppContent: React.FC = () => {
                       ? await ingenicoAzulWebApiService.sale(assignedIntegration, {
                         amount: total,
                       })
-                      : (() => {
-                        throw new Error(`La integración ${assignedIntegration.provider} todavía no está soportada en self checkout.`);
-                      })();
+                      : assignedIntegration.provider === 'CARDNET'
+                        ? await cardNetEcrService.sale(assignedIntegration, {
+                          amount: total,
+                          itbis: tax,
+                          invoiceTicket: generateCardNetInvoiceTicket(),
+                        })
+                        : (() => {
+                          throw new Error(`La integración ${assignedIntegration.provider} todavía no está soportada en self checkout.`);
+                        })();
                   const gatewayReference = 'referenceNumber' in gatewayResult
                     ? gatewayResult.referenceNumber
                     : ('transactionReference' in gatewayResult ? gatewayResult.transactionReference : undefined);
@@ -12622,7 +12676,7 @@ const AppContent: React.FC = () => {
                     gatewayResponseMessage: gatewayResult.responseMessage,
                     gatewayOrderNumber: 'orderNumber' in gatewayResult ? (gatewayResult.orderNumber || gatewayOrderNumber) : gatewayOrderNumber,
                     gatewayProcessedAmount: total,
-                    gatewayProcessedTaxAmount: assignedIntegration.provider === 'AZUL' ? tax : 0,
+                    gatewayProcessedTaxAmount: assignedIntegration.provider === 'AZUL' || assignedIntegration.provider === 'CARDNET' ? tax : 0,
                     gatewayAuthorizationCode: gatewayResult.authorizationCode,
                     gatewayReference,
                     gatewaySequenceNumber: 'sequenceNumber' in gatewayResult ? gatewayResult.sequenceNumber : undefined,
@@ -12633,6 +12687,12 @@ const AppContent: React.FC = () => {
                     gatewayMaskedPan: gatewayResult.maskedPan,
                     gatewayCardBrand: gatewayResult.cardBrand,
                     gatewayEntryMode: gatewayResult.entryMode,
+                    gatewayHost: assignedIntegration.provider === 'CARDNET' && 'host' in gatewayResult
+                      ? gatewayResult.host
+                      : undefined,
+                    gatewayCardProduct: assignedIntegration.provider === 'CARDNET' && 'productType' in gatewayResult
+                      ? String(gatewayResult.productType || '')
+                      : undefined,
                     gatewayReceiptMerchant: gatewayResult.receiptMerchant,
                     gatewayReceiptClient: gatewayResult.receiptClient,
                     gatewaySignatureData: 'signatureData' in gatewayResult ? gatewayResult.signatureData : undefined,
