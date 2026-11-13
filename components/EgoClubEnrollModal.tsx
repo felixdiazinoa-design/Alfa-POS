@@ -53,7 +53,12 @@ const EgoClubEnrollModal: React.FC<EgoClubEnrollModalProps> = ({ config, onClose
     const programEnabled = isEgoClubEnabled(config);
     const channelStatus = useMemo(() => getLoyaltyChannelStatus('/loyalty/enroll'), []);
     const enrollmentEnabled = programEnabled && channelStatus.enabled;
-    const storeId = useMemo(() => getStoredErpSyncBinding().storeId || '', []);
+    const binding = useMemo(() => getStoredErpSyncBinding(), []);
+    const storeId = binding.storeId || '';
+    // El vínculo con el ERP trae el nombre de la sucursal; sin él la caja solo tiene
+    // el UUID de la tienda y el alta lo mostraba en crudo.
+    const storeName = binding.storeName || '';
+    const storeLabel = storeName || storeId;
 
     const [form, setForm] = useState<FormState>({
         nombre: '',
@@ -215,18 +220,29 @@ const EgoClubEnrollModal: React.FC<EgoClubEnrollModalProps> = ({ config, onClose
                         })}
                         <label className="block">
                             <span className="text-[11px] font-black uppercase tracking-wide text-gray-500">Tienda de registro</span>
-                            <input
-                                value={form.registrationStoreId}
-                                disabled={!enrollmentEnabled}
-                                onChange={(event) => setForm(prev => ({ ...prev, registrationStoreId: event.target.value }))}
-                                className={`mt-1 w-full rounded-xl border-2 px-3 py-2 text-sm font-bold text-gray-800 outline-none disabled:bg-gray-100 ${
-                                    showError('registrationStoreId') ? 'border-red-300 bg-red-50' : 'border-gray-200 focus:border-blue-400'
+                            <div
+                                title={storeId || undefined}
+                                className={`mt-1 w-full rounded-xl border-2 px-3 py-2 ${
+                                    showError('registrationStoreId')
+                                        ? 'border-red-300 bg-red-50'
+                                        : 'border-gray-200 bg-gray-50'
                                 }`}
-                            />
+                            >
+                                <span className="block truncate text-sm font-bold text-gray-800">
+                                    {storeLabel || 'Sin sucursal vinculada'}
+                                </span>
+                                {storeName && storeId && (
+                                    <span className="block truncate font-mono text-[10px] text-gray-400">{storeId}</span>
+                                )}
+                            </div>
                             {showError('registrationStoreId') && (
                                 <span className="text-[11px] font-bold text-red-600">{validation.errors.registrationStoreId}</span>
                             )}
-                            <span className="text-[10px] text-gray-400">Tomada del vínculo de la terminal con el ERP</span>
+                            <span className="text-[10px] text-gray-400">
+                                {storeName
+                                    ? 'Tomada del vínculo de la terminal con el ERP'
+                                    : 'El ERP todavía no devolvió el nombre de la sucursal; se usa el ID del vínculo'}
+                            </span>
                         </label>
                     </div>
 

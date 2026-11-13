@@ -223,6 +223,7 @@ const SYNC_BINDING_LOCAL_TERMINAL_KEY = 'clic_erp_sync_local_terminal_id';
 const SYNC_BINDING_TERMINAL_NAME_KEY = 'clic_erp_sync_terminal_name';
 const SYNC_BINDING_COMPANY_KEY = 'clic_erp_sync_company_id';
 const SYNC_BINDING_STORE_KEY = 'clic_erp_sync_store_id';
+const SYNC_BINDING_STORE_NAME_KEY = 'clic_erp_sync_store_name';
 const SYNC_BINDING_LAST_SEEN_KEY = 'clic_erp_sync_last_seen';
 const SYNC_BINDING_STATUS_KEY = 'clic_erp_sync_status';
 const SYNC_BINDING_TERMINAL_UUID_KEY = 'clic_erp_sync_terminal_uuid';
@@ -1450,6 +1451,10 @@ const persistBinding = (
         localStorage.setItem(SYNC_BINDING_STORE_KEY, terminal.store_id);
     }
 
+    if (terminal.store_name) {
+        localStorage.setItem(SYNC_BINDING_STORE_NAME_KEY, terminal.store_name);
+    }
+
     if (terminal.last_seen) {
         localStorage.setItem(SYNC_BINDING_LAST_SEEN_KEY, terminal.last_seen);
     }
@@ -1474,6 +1479,7 @@ export const persistStoredErpSyncBinding = (input: {
     terminalName?: string | null;
     companyId?: string | null;
     storeId?: string | null;
+    storeName?: string | null;
     lastSeen?: string | null;
     status?: string | null;
 }) => {
@@ -1484,6 +1490,7 @@ export const persistStoredErpSyncBinding = (input: {
     const terminalName = normalizeOptional(input.terminalName || null);
     const companyId = normalizeOptional(input.companyId || null);
     const storeId = normalizeOptional(input.storeId || null);
+    const storeName = normalizeOptional(input.storeName || null);
     const lastSeen = normalizeOptional(input.lastSeen || null);
     const status = normalizeOptional(input.status || null);
 
@@ -1517,6 +1524,10 @@ export const persistStoredErpSyncBinding = (input: {
 
     if (storeId) {
         localStorage.setItem(SYNC_BINDING_STORE_KEY, storeId);
+    }
+
+    if (storeName) {
+        localStorage.setItem(SYNC_BINDING_STORE_NAME_KEY, storeName);
     }
 
     if (lastSeen) {
@@ -1566,6 +1577,21 @@ export const persistErpSyncAuthIdentity = (
     const storeId =
         normalizeOptional(String(operationalIdentity.store_id || root.store_id || terminal.store_id || ''))
         || null;
+    // El nombre de la sucursal llega junto al vínculo; sin él la caja solo tendría el
+    // UUID de la tienda y el alta de socio lo mostraba tal cual.
+    const storeName =
+        normalizeOptional(String(
+            operationalIdentity.store_name
+            || operationalIdentity.storeName
+            || root.store_name
+            || root.storeName
+            || terminal.store_name
+            || terminal.storeName
+            || terminal.sucursal
+            || terminal.location
+            || ''
+        ))
+        || null;
     const deviceId =
         normalizeOptional(String(root.device_id || root.deviceId || terminal.device_id || ''))
         || null;
@@ -1576,6 +1602,7 @@ export const persistErpSyncAuthIdentity = (
         terminalUuid,
         companyId,
         storeId,
+        storeName,
     });
 
     if (tenantId) {
@@ -2369,6 +2396,7 @@ export const clearStoredErpSyncBinding = () => {
     localStorage.removeItem(SYNC_BINDING_TERMINAL_NAME_KEY);
     localStorage.removeItem(SYNC_BINDING_COMPANY_KEY);
     localStorage.removeItem(SYNC_BINDING_STORE_KEY);
+    localStorage.removeItem(SYNC_BINDING_STORE_NAME_KEY);
     localStorage.removeItem(SYNC_BINDING_LAST_SEEN_KEY);
     localStorage.removeItem(SYNC_BINDING_STATUS_KEY);
 };
@@ -2381,6 +2409,7 @@ export const getStoredErpSyncBinding = () => ({
     terminalName: normalizeOptional(localStorage.getItem(SYNC_BINDING_TERMINAL_NAME_KEY)) || null,
     companyId: normalizeOptional(localStorage.getItem(SYNC_BINDING_COMPANY_KEY)) || null,
     storeId: normalizeOptional(localStorage.getItem(SYNC_BINDING_STORE_KEY)) || null,
+    storeName: normalizeOptional(localStorage.getItem(SYNC_BINDING_STORE_NAME_KEY)) || null,
     lastSeen: normalizeOptional(localStorage.getItem(SYNC_BINDING_LAST_SEEN_KEY)) || null,
     status: normalizeOptional(localStorage.getItem(SYNC_BINDING_STATUS_KEY)) || null,
 });
