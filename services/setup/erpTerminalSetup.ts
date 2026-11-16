@@ -15,7 +15,7 @@ import { db } from '../../utils/db';
 import { terminalConfigRequestCoordinator } from '../sync/TerminalConfigRequestCoordinator';
 import { persistSyncDeviceToken } from '../sync/deviceToken';
 import { saveTerminalCredentialsSync } from '../sync/TerminalCredentialStore';
-import { isArchivedTerminalBindingRecord } from '../../utils/terminalBindingHierarchy';
+import { isArchivedTerminalBindingRecord, normalizeRealDeviceId } from '../../utils/terminalBindingHierarchy';
 import {
   POS_SYNC_CAPABILITY_VERSIONS,
   VARIANT_PROMOTIONS_CAPABILITY,
@@ -731,14 +731,16 @@ const resolveOccupiedDeviceId = (terminal: any, terminalProfilePayload: any): st
   const metadata = asObject(profile.metadata);
   const terminalMetadata = asObject(terminal?.metadata);
 
-  return (
-    asString(metadata.bound_device_id) ||
-    asString(metadata.currentDeviceId) ||
-    asString(metadata.device_id) ||
-    asString(metadata.terminal_device_id) ||
-    asString(terminal?.device_id) ||
-    asString(terminalMetadata.bound_device_id) ||
-    undefined
+  // Un device DRAFT-* es el placeholder que el ERP usa para una caja libre:
+  // no debe contarse como "ocupada por otro equipo".
+  return normalizeRealDeviceId(
+    asString(metadata.bound_device_id)
+    || asString(metadata.currentDeviceId)
+    || asString(metadata.device_id)
+    || asString(metadata.terminal_device_id)
+    || asString(terminal?.device_id)
+    || asString(terminalMetadata.bound_device_id)
+    || '',
   );
 };
 
@@ -1509,7 +1511,8 @@ export const bindTerminalFromErp = async (input: {
       ? currentProfile.currency_codes
       : (currentProfileCurrencyCode ? [currentProfileCurrencyCode] : []);
   const occupiedDeviceId =
-    asString(targetTerminal.device_id) || resolveOccupiedDeviceId(targetTerminal, currentProfilePayload);
+    normalizeRealDeviceId(asString(targetTerminal.device_id))
+    || resolveOccupiedDeviceId(targetTerminal, currentProfilePayload);
 
   let registerPayload: Record<string, any> | null = null;
 
