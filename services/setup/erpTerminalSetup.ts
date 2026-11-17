@@ -1517,6 +1517,7 @@ export const bindTerminalFromErp = async (input: {
   let registerPayload: Record<string, any> | null = null;
 
   let authorizationCheck: Awaited<ReturnType<typeof checkTerminalAuthorizationFromErp>>;
+  let authorizationCheckFailed = false;
   try {
     authorizationCheck = await checkTerminalAuthorizationFromErp({
       erpBaseUrl: input.erpBaseUrl,
@@ -1527,10 +1528,11 @@ export const bindTerminalFromErp = async (input: {
   } catch (authorizationError) {
     const authError = authorizationError as SetupDeviceAuthorizationError;
     // Caso A: reasignación explícita del usuario.
-    // Caso B: la caja está libre (sin device real) pero el ERP igual responde
-    // DEVICE_SUPERSEDED; se reclama con el takeover, que es otra ruta.
+    // Caso B: la caja está libre (sin device real) pero el ERP responde
+    // DEVICE_SUPERSEDED; se intenta reclamar con el takeover, que es otra ruta.
     const hasRealDevice = Boolean(normalizeRealDeviceId(occupiedDeviceId));
     if (!input.forceTransfer && hasRealDevice) throw authorizationError;
+    authorizationCheckFailed = true;
     console.warn('[POS_ERP_PAIRING]', {
       ...pairingLogBase,
       status: hasRealDevice ? 'FORCE_TRANSFER_AUTH_CHECK_FAILED' : 'FREE_TERMINAL_AUTH_CHECK_FAILED',
@@ -1546,7 +1548,10 @@ export const bindTerminalFromErp = async (input: {
     occupiedDeviceId
     && occupiedDeviceId.toUpperCase() !== input.posDeviceId.toUpperCase()
   );
-  const mustClaimFreeTerminal = !occupiedDeviceId && authorizationCheck.authorized !== true;
+  // Solo se reclama por takeover cuando el chequeo FALLÓ (ERP viejo). Una caja
+  // libre con el ERP corregido devuelve device_authorized distinto del equipo y
+  // NO debe pasar por takeover: el takeover exige un device autorizado actual.
+  const mustClaimFreeTerminal = !occupiedDeviceId && authorizationCheckFailed;
   if ((occupiedByAnotherDevice && input.forceTransfer) || mustClaimFreeTerminal) {
     await fetchErpJson(input.erpBaseUrl, `/api/settings/terminals/${encodeURIComponent(targetErpTerminalId)}/takeover`, {
       method: 'POST',
