@@ -1525,14 +1525,15 @@ export const bindTerminalFromErp = async (input: {
       posDeviceId: input.posDeviceId,
     });
   } catch (authorizationError) {
-    // Reasignación explícita del usuario: el chequeo puede devolver
-    // DEVICE_SUPERSEDED porque el equipo anterior sigue autorizado en el ERP.
-    // Continuamos al takeover en lugar de bloquear la operación.
-    if (!input.forceTransfer) throw authorizationError;
     const authError = authorizationError as SetupDeviceAuthorizationError;
+    // Caso A: reasignación explícita del usuario.
+    // Caso B: la caja está libre (sin device real) pero el ERP igual responde
+    // DEVICE_SUPERSEDED; se reclama con el takeover, que es otra ruta.
+    const hasRealDevice = Boolean(normalizeRealDeviceId(occupiedDeviceId));
+    if (!input.forceTransfer && hasRealDevice) throw authorizationError;
     console.warn('[POS_ERP_PAIRING]', {
       ...pairingLogBase,
-      status: 'FORCE_TRANSFER_AUTH_CHECK_FAILED',
+      status: hasRealDevice ? 'FORCE_TRANSFER_AUTH_CHECK_FAILED' : 'FREE_TERMINAL_AUTH_CHECK_FAILED',
       authResponseCode: authError?.code || null,
     });
     authorizationCheck = {
@@ -1545,7 +1546,8 @@ export const bindTerminalFromErp = async (input: {
     occupiedDeviceId
     && occupiedDeviceId.toUpperCase() !== input.posDeviceId.toUpperCase()
   );
-  if (occupiedByAnotherDevice && input.forceTransfer) {
+  const mustClaimFreeTerminal = !occupiedDeviceId && authorizationCheck.authorized !== true;
+  if ((occupiedByAnotherDevice && input.forceTransfer) || mustClaimFreeTerminal) {
     await fetchErpJson(input.erpBaseUrl, `/api/settings/terminals/${encodeURIComponent(targetErpTerminalId)}/takeover`, {
       method: 'POST',
       headers: {
