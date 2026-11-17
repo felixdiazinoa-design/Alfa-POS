@@ -37,6 +37,20 @@ const cleanText = (value: unknown): string => (
   typeof value === 'string' ? value.trim() : value == null ? '' : String(value).trim()
 );
 
+// El ERP reserva la terminal con un device placeholder (DRAFT-...) hasta que
+// un POS real la reclama. Un placeholder NO es "otro equipo": la caja está libre.
+const PLACEHOLDER_DEVICE_PATTERN = /^(?:DRAFT|TEMP|PLACEHOLDER|PENDING)[-_]/i;
+
+export const isPlaceholderDeviceId = (value?: unknown): boolean => {
+  const normalized = cleanText(value);
+  return !normalized || PLACEHOLDER_DEVICE_PATTERN.test(normalized);
+};
+
+export const normalizeRealDeviceId = (value?: unknown): string | undefined => {
+  const normalized = cleanText(value);
+  return isPlaceholderDeviceId(normalized) ? undefined : normalized;
+};
+
 const readBoolean = (value: unknown): boolean | undefined => {
   if (typeof value === 'boolean') return value;
   const normalized = typeof value === 'string' ? value.trim().toLowerCase() : value;
@@ -131,13 +145,20 @@ export const normalizeTerminalBindingRecord = (
   // GET /api/setup/terminals defines id/terminal_id as the authoritative UUID.
   // ERP aliases are accepted only as a fallback for legacy responses.
   const id = firstText(raw.id, raw.terminal_id, raw.erpTerminalId, raw.erp_terminal_id);
-  const currentDeviceId = firstText(raw.currentDeviceId, raw.current_device_id, raw.device_id) || undefined;
+  const currentDeviceId = normalizeRealDeviceId(
+    firstText(raw.currentDeviceId, raw.current_device_id, raw.device_id),
+  );
   const bindingStatus = firstText(raw.binding_status, raw.bindingStatus).toUpperCase() || undefined;
   const explicitOccupied = readBoolean(raw.is_occupied ?? raw.occupied);
-  const occupied = explicitOccupied ?? (
-    bindingStatus === 'OCCUPIED'
-    || Boolean(currentDeviceId && currentDeviceId !== cleanText(options.deviceId))
-  );
+  // Sin device real no hay dueño: el placeholder DRAFT-* (o un device vacío)
+  // nunca puede contar como "ocupada por otro equipo", aunque el status venga
+  // como OCCUPIED por datos legados.
+  const occupied = !currentDeviceId
+    ? false
+    : (explicitOccupied ?? (
+      bindingStatus === 'OCCUPIED'
+      || currentDeviceId !== cleanText(options.deviceId)
+    ));
   const explicitCanReauthorize = readBoolean(raw.can_reauthorize ?? raw.canReauthorize);
 
   return {

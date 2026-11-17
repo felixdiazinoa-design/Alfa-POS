@@ -2290,6 +2290,24 @@ const POSInterface: React.FC<POSInterfaceProps> = ({
    // Acciones por línea del ticket denso (modo supermercado)
    const [lineDiscountCartId, setLineDiscountCartId] = useState<string | null>(null);
    const [sellerPickerCartId, setSellerPickerCartId] = useState<string | null>(null);
+   // Alcance del selector de vendedor: una línea concreta o todo el ticket.
+   const [sellerPickerScope, setSellerPickerScope] = useState<'LINE' | 'TICKET'>('LINE');
+   // Vendedor del ticket: se escribe en todas las líneas y lo heredan las nuevas.
+   const [ticketSellerId, setTicketSellerId] = useState<string | null>(null);
+   const ticketSellerRef = useRef<string | null>(null);
+   useEffect(() => {
+      ticketSellerRef.current = ticketSellerId;
+   }, [ticketSellerId]);
+   // Un ticket recuperado (en espera, reserva, mesa) ya trae vendedor en sus líneas.
+   useEffect(() => {
+      if (ticketSellerId) return;
+      const ids = Array.from(new Set(cart.map(item => item.salespersonId).filter(Boolean))) as string[];
+      if (ids.length === 1) setTicketSellerId(ids[0]);
+   }, [cart, ticketSellerId]);
+   // Ticket nuevo: al vaciarse el carrito no arrastra el vendedor anterior.
+   useEffect(() => {
+      if (cart.length === 0 && ticketSellerId) setTicketSellerId(null);
+   }, [cart.length, ticketSellerId]);
    // Operaciones de lealtad en cola: alimenta el chip 'N pendientes' del resumen.
    const [pendingLoyaltyOps, setPendingLoyaltyOps] = useState(0);
    const [showLoyaltySyncPanel, setShowLoyaltySyncPanel] = useState(false);
@@ -3448,6 +3466,8 @@ const POSInterface: React.FC<POSInterfaceProps> = ({
                subtotalizedBy: undefined,
                quantity: existing.quantity + quantity,
                isReturnLine: existing.isReturnLine || quantity < 0,
+               // Si la línea entró sin vendedor, hereda el del ticket.
+               salespersonId: existing.salespersonId || ticketSellerRef.current || undefined,
                appliedTaxIds: effectiveTaxIds,
                createdAt: existing.createdAt || new Date().toISOString(),
                production_area_id: resolveProductionAreaId(existing) || productionAreaId || undefined,
@@ -3483,6 +3503,8 @@ const POSInterface: React.FC<POSInterfaceProps> = ({
             // y la línea muestra 'Descuento aplicado' sin que exista.
             originalPrice: resolveVariantSalesPrice(selectedVariant, getProductPrice(product)),
             trackingData,
+            // Las líneas nuevas heredan el vendedor del ticket.
+            salespersonId: ticketSellerRef.current || undefined,
             ...consignmentPatch,
          };
          markInteractionStateUpdate(trace, (cart || []).length + 2);
@@ -4428,24 +4450,49 @@ const POSInterface: React.FC<POSInterfaceProps> = ({
       setActiveCartItemId((current) => (current === cartId ? null : cartId));
    }, []);
 
-   const renderTicketBrand = useCallback((compact = false) => (
-      <div className={`inline-flex items-center ${compact ? 'gap-2' : 'gap-2.5'}`}>
-         <svg
-            className={compact ? 'h-6 w-6 shrink-0' : 'h-8 w-8 shrink-0'}
-            viewBox="0 0 64 64"
-            aria-hidden="true"
-         >
-            <path fill="#132124" d="M7 52 26.5 12 35 29.2 23.8 52Z" />
-            <path fill="#00A7A0" d="M29.8 8H43l14 29.3-16.4-5.8Z" />
-            <path fill="#B8E336" d="m38.8 35 16.8 6L61 52H46.7Z" />
-            <path fill="#F4F7F6" d="m28.4 33.4 6.2 12.7L31.7 52h-8Z" />
-         </svg>
-         <span className={`whitespace-nowrap font-black tracking-[-0.02em] ${compact ? 'text-[0.95rem]' : 'text-[1.15rem]'}`}>
-            <span className="text-[#132124]">ALFA</span>
-            <span className="text-[#00A7A0]">-POS</span>
-         </span>
-      </div>
-   ), []);
+   /**
+    * Cabecera del ticket: un solo sistema para todos los controles.
+    * 48 px de alto, radio 16 px, tile de 32 px y etiqueta de 8.5 px.
+    * Las etiquetas se muestran cuando la cabecera tiene ancho (supermercado);
+    * en la barra lateral estrecha quedan sólo los iconos con tooltip.
+    */
+   const showHeaderLabels = isRetailMode;
+   const HEADER_CTRL_LABEL = 'block text-[8.5px] font-black uppercase leading-none tracking-[0.16em] text-[#9DAEAD]';
+   const HEADER_CTRL_VALUE = 'mt-1 block truncate text-[10.5px] font-black uppercase leading-none tracking-[0.02em]';
+
+   /**
+    * Identidad del cajero en el encabezado: sustituye al logo de la marca.
+    * Foto (o inicial) + nombre + caja. Los datos ya vienen del usuario de sesión
+    * y del terminal activo, así que no hay estado nuevo que mantener.
+    */
+   const renderCashierIdentity = useCallback((compact = false) => {
+      const displayName = String(currentUser?.name || '').trim() || 'Cajero';
+      const initial = displayName.charAt(0).toUpperCase();
+      return (
+         <div className={`flex min-w-0 items-center ${compact ? 'gap-2' : 'gap-2.5'}`}>
+            <div className={`relative shrink-0 ${compact ? 'h-9 w-9' : 'h-11 w-11'}`}>
+               <div className="h-full w-full overflow-hidden rounded-full border border-[#E2E8E7] bg-[#E8F4F3] shadow-inner">
+                  {currentUser?.photo ? (
+                     <img src={currentUser.photo} alt={displayName} className="h-full w-full object-cover" />
+                  ) : (
+                     <div className="flex h-full w-full items-center justify-center font-black text-[#00877F]" style={{ fontSize: compact ? 13 : 16 }}>
+                        {initial}
+                     </div>
+                  )}
+               </div>
+               <span className="absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full border-2 border-white bg-emerald-500" />
+            </div>
+            <div className="min-w-0 leading-tight">
+               <p className={`truncate font-black text-[#132124] ${compact ? 'max-w-[92px] text-[11px]' : 'max-w-[150px] text-sm'}`} title={displayName}>
+                  {displayName}
+               </p>
+               <p className={`mt-0.5 truncate font-black uppercase text-[#8A9A99] ${compact ? 'text-[8.5px] tracking-[0.14em]' : 'text-[9px] tracking-[0.16em]'}`}>
+                  Cajero <span className="text-[#C9D8D7]">·</span> <span className="text-[#C0392B]">{terminalDisplayLabel}</span>
+               </p>
+            </div>
+         </div>
+      );
+   }, [currentUser?.name, currentUser?.photo, terminalDisplayLabel]);
    const cartQuantity = useMemo(
       () => processedCart.reduce((sum, item) => sum + Math.abs(Number(item.quantity || 0)), 0),
       [processedCart]
@@ -4949,6 +4996,36 @@ const POSInterface: React.FC<POSInterfaceProps> = ({
       )));
       setSellerPickerCartId(null);
    }, [onUpdateCart]);
+
+   /**
+    * Vendedor del ticket = vendedor por defecto: al asignarlo se escribe en todas
+    * las líneas. Después cada línea se puede seguir cambiando en sus Acciones.
+    */
+   const assignSellerToTicket = useCallback((sellerId: string | null) => {
+      setTicketSellerId(sellerId);
+      onUpdateCart(prev => prev.map(item => ({ ...item, salespersonId: sellerId || undefined })));
+      setSellerPickerCartId(null);
+   }, [onUpdateCart]);
+
+   const openSellerPicker = useCallback((target: { mode: 'TICKET' } | { mode: 'LINE'; cartId: string }) => {
+      if (target.mode === 'TICKET') {
+         setSellerPickerScope('TICKET');
+         setSellerPickerCartId('__TICKET__');
+         return;
+      }
+      setSellerPickerScope('LINE');
+      setSellerPickerCartId(target.cartId);
+   }, []);
+
+   const ticketSellerLabel = useMemo(
+      () => (ticketSellerId ? resolveSalespersonLabel(ticketSellerId) : ''),
+      [ticketSellerId, resolveSalespersonLabel]
+   );
+   // Líneas que hoy llevan algún vendedor: alimenta el contador del chip.
+   const sellersOnLines = useMemo(
+      () => cart.filter(item => Boolean(item.salespersonId)).length,
+      [cart]
+   );
 
    const updateCartItem = async (updatedItem: CartItem | null, cartIdToDelete?: string) => {
       if (blockRecoveredUberOrderMutation('editar el pedido')) return;
@@ -7919,7 +7996,7 @@ const POSInterface: React.FC<POSInterfaceProps> = ({
             < div className={`${isMobile ? 'flex' : 'hidden'} px-4 py-3 border-b border-gray-100 bg-white flex-col gap-3 shrink-0`} >
                <div className="flex justify-between items-start">
                   <div className="flex items-center gap-3">
-                     {renderTicketBrand(true)}
+                     {renderCashierIdentity(true)}
                      <button onClick={() => setMobileView('PRODUCTS')} className="h-10 w-10 -ml-2 rounded-xl bg-blue-50 text-blue-600 hover:bg-blue-100 transition-colors flex items-center justify-center">
                         <ArrowLeft size={24} />
                      </button>
@@ -7931,18 +8008,30 @@ const POSInterface: React.FC<POSInterfaceProps> = ({
                         ) : 'Ticket Actual'}
                      </h2>
                   </div>
-                  <div className="flex gap-1">
+                  <div className="flex items-center gap-1">
+                     {/* Vendedor del ticket: mismo control que en la barra de escritorio. */}
+                     <button
+                        onClick={() => openSellerPicker({ mode: 'TICKET' })}
+                        title={ticketSellerId ? `Vendedor del ticket: ${ticketSellerLabel}. Toca para cambiar.` : 'Asignar vendedor a todas las líneas del ticket'}
+                        className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border transition-colors ${
+                           ticketSellerId
+                              ? 'border-[#BFE6E2] bg-[#F6FCFB] text-[#00877F]'
+                              : 'border-dashed border-[#C9D8D7] bg-white text-[#9DAEAD] hover:border-[#00A7A0] hover:text-[#00877F]'
+                        }`}
+                     >
+                        {ticketSellerId ? <UserCheck size={18} /> : <Users size={18} />}
+                     </button>
                      {cart.length > 0 && (
                         <button
                            onClick={handleClearFreshCartItems}
                            disabled={!hasClearableFreshItems}
-                           className="flex h-9 w-9 items-center justify-center rounded-[10px] border border-[#F2DCD8] bg-white text-[#C0392B] transition-colors hover:bg-[#FDECEA] disabled:opacity-40"
+                           className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-[#F2DCD8] bg-white text-[#C0392B] transition-colors hover:bg-[#FDECEA] disabled:opacity-40"
                            title={hasClearableFreshItems ? 'Borrar artículos nuevos' : 'No hay artículos nuevos para borrar'}
                         >
                            <Trash2 size={16} />
                         </button>
                      )}
-                     <button onClick={openParkAliasModal} className="flex h-9 w-9 items-center justify-center rounded-[10px] border border-[#E1E9E8] bg-white text-[#1B3034] transition-colors hover:bg-[#F4F7F6]" title="Guardar Ticket">
+                     <button onClick={openParkAliasModal} className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-[#E1E9E8] bg-white text-[#1B3034] transition-colors hover:bg-[#F4F7F6]" title="Guardar Ticket">
                         <Save size={20} />
                      </button>
                      {/* El botón 'Espera' del dock (acción PARK_LIST) aparece con la
@@ -7978,10 +8067,10 @@ const POSInterface: React.FC<POSInterfaceProps> = ({
                      onClick={() => setRightSidebarTab('CART')}
                      aria-label={`Abrir carrito${cartQuantity > 0 ? ` con ${cartQuantity} artículos` : ''}`}
                      aria-pressed={rightSidebarTab === 'CART'}
-                     className={`group relative flex h-12 w-12 shrink-0 items-center justify-center rounded-[1.05rem] border transition-all duration-200 ${
+                     className={`group relative flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border transition-all duration-200 ${
                         rightSidebarTab === 'CART'
                            ? 'border-red-200 bg-gradient-to-br from-red-50 via-rose-50 to-red-100 text-red-700 shadow-[0_14px_30px_rgba(248,113,113,0.18)]'
-                           : 'border-slate-200 bg-white text-slate-500'
+                           : 'border-[#E2E8E7] bg-white text-slate-500'
                      }`}
                   >
                      <span className="flex h-8 w-8 items-center justify-center rounded-xl border border-red-100 bg-white text-red-500 shadow-sm">
@@ -8002,10 +8091,10 @@ const POSInterface: React.FC<POSInterfaceProps> = ({
                      onClick={() => setRightSidebarTab('ACTIONS')}
                      aria-label="Abrir acciones rápidas"
                      aria-pressed={rightSidebarTab === 'ACTIONS'}
-                     className={`group flex h-12 w-12 shrink-0 items-center justify-center rounded-[1.05rem] border transition-all duration-200 ${
+                     className={`group flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border transition-all duration-200 ${
                         rightSidebarTab === 'ACTIONS'
                            ? 'border-blue-200 bg-gradient-to-br from-blue-50 via-sky-50 to-blue-100 text-blue-700 shadow-[0_14px_30px_rgba(59,130,246,0.18)]'
-                           : 'border-slate-200 bg-white text-slate-500'
+                           : 'border-[#E2E8E7] bg-white text-slate-500'
                      }`}
                   >
                      <span className="flex h-8 w-8 items-center justify-center rounded-xl border border-blue-100 bg-white text-blue-500 shadow-sm">
@@ -8060,9 +8149,9 @@ const POSInterface: React.FC<POSInterfaceProps> = ({
 
             {/* DESKTOP: marca + mesa/comensales bajo el logo; retail: busqueda al centro; botones carrito/acciones alineados a la derecha (como APK 1.0.300) */}
             <div className={`pos-ticket-heading ${isMobile ? 'hidden' : 'flex'} px-5 py-3 border-b border-gray-100 bg-gray-50/50 flex-col gap-3 shrink-0 flex-none ${activeTable ? 'border-l-4 border-l-blue-500' : ''}`} >
-               <div data-testid="desktop-ticket-toolbar" className="flex w-full items-center justify-between gap-1">
+               <div data-testid="desktop-ticket-toolbar" className="flex w-full flex-wrap items-center justify-between gap-1">
                   <div className="flex min-w-0 shrink-0 items-center justify-start">
-                     {renderTicketBrand(!isRetailMode)}
+                     {renderCashierIdentity(!isRetailMode)}
                   </div>
 
                   {/* RETAIL MODE SEARCH BAR */}
@@ -8162,17 +8251,17 @@ const POSInterface: React.FC<POSInterfaceProps> = ({
                      </div>
                   )}
 
-                  <div className="ml-auto flex shrink-0 items-center justify-end gap-1">
+                  <div className="ml-auto flex shrink-0 items-center justify-end gap-1.5">
                      {cart.length > 0 && (
                         <button
                            onClick={handleClearFreshCartItems}
                            disabled={!hasClearableFreshItems}
                            aria-label="Borrar artículos nuevos del ticket"
                            title={hasClearableFreshItems ? 'Borrar artículos nuevos' : 'No hay artículos nuevos para borrar'}
-                           className={`group flex h-12 w-12 shrink-0 items-center justify-center rounded-[1.05rem] border transition-all duration-200 ${
+                           className={`group flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border transition-all duration-200 ${
                               hasClearableFreshItems
-                                 ? 'border-rose-200 bg-white text-rose-500 hover:border-rose-300 hover:bg-rose-50 hover:text-rose-700'
-                                 : 'cursor-not-allowed border-slate-200 bg-slate-50 text-slate-300'
+                                 ? 'border-rose-200 bg-white hover:border-rose-300 hover:bg-rose-50'
+                                 : 'cursor-not-allowed border-[#E2E8E7] bg-slate-50'
                            }`}
                         >
                            <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border transition-all ${
@@ -8184,46 +8273,122 @@ const POSInterface: React.FC<POSInterfaceProps> = ({
                            </span>
                         </button>
                      )}
-                     {/* Cliente y comprobante compactos, arriba a la derecha */}
-                     <div className="flex shrink-0 items-center gap-1.5">
-                        {selectedCustomer ? (
-                           <div className="flex items-center gap-1.5 rounded-xl border border-[#DEE7E6] bg-white px-2 py-1 shadow-sm">
-                              <UserPlus size={14} className="text-[#00A7A0]" />
-                              <span className="max-w-[140px] truncate text-[11px] font-black text-[#132124]">{selectedCustomer.name}</span>
-                              {egoClubTierLabel && (
-                                 <span className={`text-[9px] font-black uppercase tracking-wide px-1.5 py-0.5 rounded border ${getTierBadgeClass(selectedCustomer.tier)}`}>
-                                    {egoClubTierLabel}
+
+                     {/* Vendedor del ticket: al asignarlo se escribe en todas las líneas. */}
+                     {ticketSellerId ? (
+                        <div className={`inline-flex h-12 shrink-0 items-center rounded-2xl border border-[#BFE6E2] bg-[#F6FCFB] shadow-sm ${showHeaderLabels ? 'gap-1.5 pl-2 pr-1' : 'w-12 justify-center'}`}>
+                           <button
+                              type="button"
+                              onClick={() => openSellerPicker({ mode: 'TICKET' })}
+                              title={`Vendedor del ticket: ${ticketSellerLabel}. Toca para cambiar.`}
+                              className={`flex min-w-0 items-center ${showHeaderLabels ? 'gap-2 text-left' : 'justify-center'}`}
+                           >
+                              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border border-[#CDEDE9] bg-white text-[#00877F]">
+                                 <UserCheck size={16} strokeWidth={2.3} />
+                              </span>
+                              {showHeaderLabels && (
+                                 <span className="min-w-0">
+                                    <span className={HEADER_CTRL_LABEL}>Vendedor</span>
+                                    <span className={`${HEADER_CTRL_VALUE} max-w-[120px] text-[#132124]`}>{ticketSellerLabel}</span>
                                  </span>
                               )}
+                              {showHeaderLabels && sellersOnLines > 0 && (
+                                 <span className="ml-0.5 inline-flex min-w-[18px] shrink-0 items-center justify-center rounded-full bg-[#00A7A0] px-1 py-0.5 text-[9px] font-black leading-none text-white">
+                                    {sellersOnLines}
+                                 </span>
+                              )}
+                           </button>
+                           {showHeaderLabels && (
+                              <button
+                                 type="button"
+                                 onClick={() => assignSellerToTicket(null)}
+                                 title="Quitar vendedor del ticket"
+                                 className="rounded-lg p-1 text-[#9DAEAD] transition-colors hover:bg-white hover:text-[#C0392B]"
+                              >
+                                 <X size={13} />
+                              </button>
+                           )}
+                        </div>
+                     ) : (
+                        <button
+                           type="button"
+                           onClick={() => openSellerPicker({ mode: 'TICKET' })}
+                           title="Asignar vendedor a todas las líneas del ticket"
+                           className={`inline-flex h-12 shrink-0 items-center rounded-2xl border border-dashed border-[#C9D8D7] bg-white transition-all hover:border-[#00A7A0] hover:shadow-sm ${showHeaderLabels ? 'gap-2 pl-2 pr-3' : 'w-12 justify-center'}`}
+                        >
+                           <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border border-teal-100 bg-teal-50 text-[#00877F]">
+                              <Users size={16} strokeWidth={2.3} />
+                           </span>
+                           {showHeaderLabels && (
+                              <span className="text-left">
+                                 <span className={HEADER_CTRL_LABEL}>Vendedor</span>
+                                 <span className={`${HEADER_CTRL_VALUE} text-[#B45309]`}>Sin asignar</span>
+                              </span>
+                           )}
+                        </button>
+                     )}
+
+                     {/* Cliente del ticket: misma anatomía que el vendedor. */}
+                     {selectedCustomer ? (
+                        <div className={`inline-flex h-12 shrink-0 items-center rounded-2xl border border-[#DEE7E6] bg-white shadow-sm ${showHeaderLabels ? 'gap-1.5 pl-2 pr-1' : 'w-12 justify-center'}`}>
+                           <button
+                              type="button"
+                              onClick={onOpenCustomers}
+                              title={`Cliente del ticket: ${selectedCustomer.name}. Toca para cambiar.`}
+                              className={`flex min-w-0 items-center ${showHeaderLabels ? 'gap-2 text-left' : 'justify-center'}`}
+                           >
+                              <span className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-blue-100 bg-blue-50 text-blue-600">
+                                 {resolveCustomerImageSrc(selectedCustomer) ? (
+                                    <img src={resolveCustomerImageSrc(selectedCustomer)!} alt={selectedCustomer.name} className="h-full w-full object-cover" />
+                                 ) : (
+                                    <UserCheck size={16} strokeWidth={2.3} />
+                                 )}
+                              </span>
+                              {showHeaderLabels && (
+                                 <span className="min-w-0">
+                                    <span className={HEADER_CTRL_LABEL}>Cliente</span>
+                                    <span className={`${HEADER_CTRL_VALUE} max-w-[120px] text-[#132124]`}>{selectedCustomer.name}</span>
+                                 </span>
+                              )}
+                           </button>
+                           {showHeaderLabels && (
                               <button
                                  type="button"
                                  onClick={() => onSelectCustomer(null)}
                                  title="Quitar cliente del ticket"
-                                 className="rounded p-0.5 text-[#9DAEAD] transition-colors hover:text-[#C0392B]"
+                                 className="rounded-lg p-1 text-[#9DAEAD] transition-colors hover:bg-[#F4F7F6] hover:text-[#C0392B]"
                               >
-                                 <X size={12} />
+                                 <X size={13} />
                               </button>
-                           </div>
-                        ) : (
-                           <button
-                              type="button"
-                              onClick={onOpenCustomers}
-                              title="Asignar cliente al ticket"
-                              className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-dashed border-[#C9D8D7] bg-white px-2.5 text-[10px] font-black uppercase tracking-wide text-[#6C7F80] transition-colors hover:border-[#00A7A0] hover:text-[#00877F]"
-                           >
-                              <UserPlus size={14} /> Cliente
-                           </button>
-                        )}
-                     </div>
+                           )}
+                        </div>
+                     ) : (
+                        <button
+                           type="button"
+                           onClick={onOpenCustomers}
+                           title="Asignar cliente al ticket"
+                           className={`inline-flex h-12 shrink-0 items-center rounded-2xl border border-dashed border-[#C9D8D7] bg-white transition-all hover:border-[#00A7A0] hover:shadow-sm ${showHeaderLabels ? 'gap-2 pl-2 pr-3' : 'w-12 justify-center'}`}
+                        >
+                           <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border border-blue-100 bg-blue-50 text-blue-600">
+                              <UserPlus size={16} strokeWidth={2.3} />
+                           </span>
+                           {showHeaderLabels && (
+                              <span className="text-left">
+                                 <span className={HEADER_CTRL_LABEL}>Cliente</span>
+                                 <span className={`${HEADER_CTRL_VALUE} text-[#B45309]`}>Sin asignar</span>
+                              </span>
+                           )}
+                        </button>
+                     )}
 
                      <button
                         onClick={() => setRightSidebarTab('CART')}
                         aria-label={`Abrir carrito${cartQuantity > 0 ? ` con ${cartQuantity} artículos` : ''}`}
                         title={`Carrito${cartQuantity > 0 ? ` (${cartQuantity})` : ''}`}
-                        className={`group relative flex h-12 w-12 shrink-0 items-center justify-center rounded-[1.05rem] border transition-all duration-200 ${
+                        className={`group relative flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border transition-all duration-200 ${
                            rightSidebarTab === 'CART'
                               ? 'border-red-200 bg-gradient-to-br from-red-50 via-rose-50 to-red-100 text-red-700 shadow-[0_14px_30px_rgba(248,113,113,0.18)]'
-                              : 'border-slate-200 bg-white text-slate-500 hover:border-red-200 hover:bg-red-50/70 hover:text-red-600'
+                              : 'border-[#E2E8E7] bg-white text-slate-500 hover:border-red-200 hover:bg-red-50/70 hover:text-red-600'
                         }`}
                      >
                         <span
@@ -8248,10 +8413,10 @@ const POSInterface: React.FC<POSInterfaceProps> = ({
                         onClick={() => setRightSidebarTab('ACTIONS')}
                         aria-label="Abrir acciones rápidas"
                         title="Acciones"
-                        className={`group flex h-12 w-12 shrink-0 items-center justify-center rounded-[1.05rem] border transition-all duration-200 ${
+                        className={`group flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border transition-all duration-200 ${
                            rightSidebarTab === 'ACTIONS'
                               ? 'border-blue-200 bg-gradient-to-br from-blue-50 via-sky-50 to-blue-100 text-blue-700 shadow-[0_14px_30px_rgba(59,130,246,0.18)]'
-                              : 'border-slate-200 bg-white text-slate-500 hover:border-blue-200 hover:bg-blue-50/70 hover:text-blue-600'
+                              : 'border-[#E2E8E7] bg-white text-slate-500 hover:border-blue-200 hover:bg-blue-50/70 hover:text-blue-600'
                         }`}
                      >
                         <span
@@ -8434,7 +8599,7 @@ const POSInterface: React.FC<POSInterfaceProps> = ({
                   onRemoveItem={(cartId) => updateCartItem(null, cartId)}
                   onDuplicateItem={duplicateCartLine}
                   onLineDiscount={(cartId) => setLineDiscountCartId(cartId)}
-                  onAssignSeller={(cartId) => setSellerPickerCartId(cartId)}
+                  onAssignSeller={(cartId) => openSellerPicker({ mode: 'LINE', cartId })}
                   onChangeQuantity={changeCartLineQuantity}
                   resolveSellerName={resolveSalespersonLabel}
                   containerStyle={isMobile ? bottomAwareScrollStyle : undefined}
@@ -9290,17 +9455,44 @@ const POSInterface: React.FC<POSInterfaceProps> = ({
             );
          })()}
 
-         {/* Vendedor por línea */}
+         {/* Vendedor: por línea o para todo el ticket */}
          {sellerPickerCartId && (() => {
-            const line = processedCart.find(item => item.cartId === sellerPickerCartId);
-            if (!line) return null;
+            const isTicketScope = sellerPickerScope === 'TICKET';
+            const line = isTicketScope ? null : processedCart.find(item => item.cartId === sellerPickerCartId);
+            if (!isTicketScope && !line) return null;
+            const activeSellerId = isTicketScope ? ticketSellerId : line?.salespersonId;
+            const ticketLines = processedCart.length;
+            const assign = (sellerId: string | null) => {
+               if (isTicketScope) {
+                  assignSellerToTicket(sellerId);
+                  return;
+               }
+               void assignSellerToCartLine(line!.cartId!, sellerId);
+            };
             return (
                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
                   <div className="w-full max-w-md overflow-hidden rounded-2xl bg-white shadow-2xl">
                      <div className="flex items-start justify-between border-b border-[#E1E9E8] px-5 py-4">
                         <div>
-                           <p className="text-[10px] font-black uppercase tracking-[0.18em] text-[#9DAEAD]">Asignar vendedor</p>
-                           <p className="mt-1 text-sm font-black text-[#132124]">{line.name}</p>
+                           <p className="text-[10px] font-black uppercase tracking-[0.18em] text-[#9DAEAD]">
+                              {isTicketScope ? 'Vendedor del ticket' : 'Vendedor de la línea'}
+                           </p>
+                           <p className="mt-1 text-sm font-black text-[#132124]">
+                              {isTicketScope
+                                 ? (ticketLines === 0
+                                    ? 'Para las líneas que agregues'
+                                    : ticketLines === 1
+                                       ? 'A la única línea del ticket'
+                                       : `A las ${ticketLines} líneas del ticket`)
+                                 : line!.name}
+                           </p>
+                           {isTicketScope && (
+                              <p className="mt-1 text-[11px] font-semibold text-[#6C7F80]">
+                                 {ticketLines === 0
+                                    ? 'El ticket aún está vacío: se aplicará a cada línea que agregues.'
+                                    : 'Se aplica a todas las líneas; después puedes cambiarlas una por una en Acciones.'}
+                              </p>
+                           )}
                         </div>
                         <button onClick={() => setSellerPickerCartId(null)} className="rounded-lg p-1.5 text-[#9DAEAD] hover:bg-[#F4F7F6]">
                            <X size={18} />
@@ -9313,12 +9505,12 @@ const POSInterface: React.FC<POSInterfaceProps> = ({
                            </p>
                         )}
                         {salesUsers.map(seller => {
-                           const active = line.salespersonId === seller.id;
+                           const active = activeSellerId === seller.id;
                            return (
                               <button
                                  key={seller.id}
                                  type="button"
-                                 onClick={() => void assignSellerToCartLine(line.cartId!, seller.id)}
+                                 onClick={() => assign(seller.id)}
                                  className={`mb-1 flex w-full items-center justify-between rounded-xl px-3 py-2.5 text-left transition-colors ${active ? 'bg-[#E7F7F6] text-[#00877F]' : 'hover:bg-[#F4F7F6] text-[#1B3034]'}`}
                               >
                                  <span className="text-sm font-bold">{seller.name}</span>
@@ -9327,14 +9519,14 @@ const POSInterface: React.FC<POSInterfaceProps> = ({
                            );
                         })}
                      </div>
-                     {line.salespersonId && (
+                     {activeSellerId && (
                         <div className="border-t border-[#E1E9E8] p-3">
                            <button
                               type="button"
-                              onClick={() => void assignSellerToCartLine(line.cartId!, null)}
+                              onClick={() => assign(null)}
                               className="w-full rounded-xl border border-[#F2DCD8] bg-[#FEF6F5] px-3 py-2 text-xs font-bold uppercase tracking-wide text-[#C0392B]"
                            >
-                              Quitar vendedor
+                              {isTicketScope ? 'Quitar vendedor del ticket' : 'Quitar vendedor'}
                            </button>
                         </div>
                      )}

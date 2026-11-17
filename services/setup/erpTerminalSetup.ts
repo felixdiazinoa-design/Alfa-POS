@@ -15,7 +15,7 @@ import { db } from '../../utils/db';
 import { terminalConfigRequestCoordinator } from '../sync/TerminalConfigRequestCoordinator';
 import { persistSyncDeviceToken } from '../sync/deviceToken';
 import { saveTerminalCredentialsSync } from '../sync/TerminalCredentialStore';
-import { isArchivedTerminalBindingRecord } from '../../utils/terminalBindingHierarchy';
+import { isArchivedTerminalBindingRecord, normalizeRealDeviceId } from '../../utils/terminalBindingHierarchy';
 import {
   POS_SYNC_CAPABILITY_VERSIONS,
   VARIANT_PROMOTIONS_CAPABILITY,
@@ -731,14 +731,16 @@ const resolveOccupiedDeviceId = (terminal: any, terminalProfilePayload: any): st
   const metadata = asObject(profile.metadata);
   const terminalMetadata = asObject(terminal?.metadata);
 
-  return (
-    asString(metadata.bound_device_id) ||
-    asString(metadata.currentDeviceId) ||
-    asString(metadata.device_id) ||
-    asString(metadata.terminal_device_id) ||
-    asString(terminal?.device_id) ||
-    asString(terminalMetadata.bound_device_id) ||
-    undefined
+  // Un device DRAFT-* es el placeholder que el ERP usa para una caja libre:
+  // no debe contarse como "ocupada por otro equipo".
+  return normalizeRealDeviceId(
+    asString(metadata.bound_device_id)
+    || asString(metadata.currentDeviceId)
+    || asString(metadata.device_id)
+    || asString(metadata.terminal_device_id)
+    || asString(terminal?.device_id)
+    || asString(terminalMetadata.bound_device_id)
+    || '',
   );
 };
 
@@ -1509,11 +1511,13 @@ export const bindTerminalFromErp = async (input: {
       ? currentProfile.currency_codes
       : (currentProfileCurrencyCode ? [currentProfileCurrencyCode] : []);
   const occupiedDeviceId =
-    asString(targetTerminal.device_id) || resolveOccupiedDeviceId(targetTerminal, currentProfilePayload);
+    normalizeRealDeviceId(asString(targetTerminal.device_id))
+    || resolveOccupiedDeviceId(targetTerminal, currentProfilePayload);
 
   let registerPayload: Record<string, any> | null = null;
 
   let authorizationCheck: Awaited<ReturnType<typeof checkTerminalAuthorizationFromErp>>;
+  let authorizationCheckFailed = false;
   try {
     authorizationCheck = await checkTerminalAuthorizationFromErp({
       erpBaseUrl: input.erpBaseUrl,
@@ -1522,14 +1526,16 @@ export const bindTerminalFromErp = async (input: {
       posDeviceId: input.posDeviceId,
     });
   } catch (authorizationError) {
-    // Reasignación explícita del usuario: el chequeo puede devolver
-    // DEVICE_SUPERSEDED porque el equipo anterior sigue autorizado en el ERP.
-    // Continuamos al takeover en lugar de bloquear la operación.
-    if (!input.forceTransfer) throw authorizationError;
     const authError = authorizationError as SetupDeviceAuthorizationError;
+    // Caso A: reasignación explícita del usuario.
+    // Caso B: la caja está libre (sin device real) pero el ERP responde
+    // DEVICE_SUPERSEDED; se intenta reclamar con el takeover, que es otra ruta.
+    const hasRealDevice = Boolean(normalizeRealDeviceId(occupiedDeviceId));
+    if (!input.forceTransfer && hasRealDevice) throw authorizationError;
+    authorizationCheckFailed = true;
     console.warn('[POS_ERP_PAIRING]', {
       ...pairingLogBase,
-      status: 'FORCE_TRANSFER_AUTH_CHECK_FAILED',
+      status: hasRealDevice ? 'FORCE_TRANSFER_AUTH_CHECK_FAILED' : 'FREE_TERMINAL_AUTH_CHECK_FAILED',
       authResponseCode: authError?.code || null,
     });
     authorizationCheck = {
@@ -1542,7 +1548,11 @@ export const bindTerminalFromErp = async (input: {
     occupiedDeviceId
     && occupiedDeviceId.toUpperCase() !== input.posDeviceId.toUpperCase()
   );
-  if (occupiedByAnotherDevice && input.forceTransfer) {
+  // Solo se reclama por takeover cuando el chequeo FALLÓ (ERP viejo). Una caja
+  // libre con el ERP corregido devuelve device_authorized distinto del equipo y
+  // NO debe pasar por takeover: el takeover exige un device autorizado actual.
+  const mustClaimFreeTerminal = !occupiedDeviceId && authorizationCheckFailed;
+  if ((occupiedByAnotherDevice && input.forceTransfer) || mustClaimFreeTerminal) {
     await fetchErpJson(input.erpBaseUrl, `/api/settings/terminals/${encodeURIComponent(targetErpTerminalId)}/takeover`, {
       method: 'POST',
       headers: {
